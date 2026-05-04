@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# Codex-review hook for /lifeline:planner.
+#
+# Invokes `codex exec` against a doc-under-review (e.g. a freshly-written
+# design spec) using a hook-specific prompt template. Captures the codex
+# review markdown to a result file the caller reads back.
+#
+# Usage:
+#   ./scripts/codex-review.sh <hook> <artifact-path> [<scratch-dir>]
+#
+# Arguments:
+#   hook           — one of: spec-complete  (v1; v2 may add plan-complete)
+#                    Selects the prompt template under references/codex-prompts/.
+#   artifact-path  — path to the markdown file under review.
+#   scratch-dir    — optional; default ".lifeline-planner". The skill's
+#                    .git/info/exclude bootstrap is run against this dir.
+#
+# Outputs:
+#   <scratch-dir>/<hook>-prompt.md    — composed prompt (template + artifact)
+#   <scratch-dir>/<hook>-review.md    — codex's review markdown (THE result)
+#   <scratch-dir>/<hook>-events.log   — codex stdout (event-stream noise)
+#   <scratch-dir>/<hook>-stderr.log   — codex stderr
+#
+# Environment overrides (for tests):
+#   LIFELINE_CODEX_TIMEOUT  — seconds; default 300. Set to a small number
+#                             (e.g. 1) to force the timeout path.
+#
+# Exit codes:
+#   0    — codex returned non-empty review at <hook>-review.md (FULL path).
+#   124  — GNU `timeout` fired (DEGRADED path → caller proceeds without footer).
+#   *    — any other non-zero. DEGRADED path. Re-routes the
+#          exit-0-without-output edge case (codex exits 0 but writes nothing)
+#          to a non-zero exit so the caller doesn't false-pass.
+#
+# Important codex flag notes:
+#   - Prompt is passed positionally via `-- "$PROMPT_BODY"` (NOT --prompt-file,
+#     which does not exist).
+#   - --output-last-message FILE captures the final assistant message (NOT
+#     --output-format json, which does not exist).
+#   - No --model: per ChatGPT-account auth, explicit model selection is
+#     rejected. Omitting lets codex pick the auth-mode-correct default.
+#   - --sandbox read-only: codex is reviewing, not modifying.
+#   - External `timeout` wrapper: codex exec has no built-in timeout flag.
+#   - </dev/null on every invocation: codex has been observed to hang waiting
+#     on stdin in some agent-runner contexts; closing stdin prevents that.
+
+set -euo pipefail
+
+if [ "$#" -lt 2 ]; then
+  echo "usage: $0 <hook> <artifact-path> [<scratch-dir>]" >&2
+  exit 2
+fi
+
+HOOK="$1"
+ARTIFACT_PATH="$2"
+SCRATCH_DIR="${3:-.lifeline-planner}"
+
+if [ ! -f "$ARTIFACT_PATH" ]; then
+  echo "ERROR: artifact not found: $ARTIFACT_PATH" >&2
+  exit 2
+fi
+
+# Resolve the prompt template for this hook. SKILL_DIR mirrors the
+# upsource-review pattern — try the install-cache path first, then the
+# repo-relative dev path.
+SKILL_DIR="skills/planner"
+[ -d "$SKILL_DIR/references/codex-prompts" ] || \
+  SKILL_DIR="$(git rev-parse --show-toplevel 2>/dev/null)/skills/planner"
+
+TEMPLATE="$SKILL_DIR/references/codex-prompts/${HOOK}.md"
+if [ ! -f "$TEMPLATE" ]; then
+  echo "ERROR: no prompt template for hook '$HOOK' at $TEMPLATE" >&2
+  exit 2
+fi
+
+# Self-bootstrap the scratch dir's git exclusion (idempotent).
+ensure_excluded() {
+  local pattern="$1"
+  local excludes
+  excludes="$(git rev-parse --git-path info/exclude 2>/dev/null)" || return 0
+  [ -f "$excludes" ] || return 0
+  grep -qxF "$pattern" "$excludes" || printf '%s\n' "$pattern" >> "$excludes"
+}
+ensure_excluded "${SCRATCH_DIR}/"
+
+mkdir -p "$SCRATCH_DIR"
+
+PROMPT_FILE="${SCRATCH_DIR}/${HOOK}-prompt.md"
+RESULT_MD="${SCRATCH_DIR}/${HOOK}-review.md"
+EVENTS_LOG="${SCRATCH_DIR}/${HOOK}-events.log"
+STDERR_LOG="${SCRATCH_DIR}/${HOOK}-stderr.log"
+
+# Build the composed prompt: template + the artifact under review.
+{
+  cat "$TEMPLATE"
+  printf '\n\n---\n\n## Document under review (`%s`)\n\n```markdown\n' "$ARTIFACT_PATH"
+  cat "$ARTIFACT_PATH"
+  printf '\n```\n'
+} > "$PROMPT_FILE"
+
+PROMPT_BODY=$(cat "$PROMPT_FILE")
+
+CODEX_TIMEOUT="${LIFELINE_CODEX_TIMEOUT:-300}"
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_PREFIX="timeout $CODEX_TIMEOUT"
+else
+  echo "WARNING: 'timeout' not available — running codex without external cap." >&2
+  TIMEOUT_PREFIX=""
+fi
+
+set +e
+$TIMEOUT_PREFIX codex exec \
+  --sandbox read-only \
+  --output-last-message "$RESULT_MD" \
+  -- "$PROMPT_BODY" \
+  < /dev/null \
+  > "$EVENTS_LOG" \
+  2> "$STDERR_LOG"
+CODEX_EXIT=$?
+set -e
+
+# Guard against the codex-exits-0-without-output edge case. Disk-full, codex
+# bug, or an --output-last-message path issue can let codex return 0 without
+# writing the result. Without this guard, the caller would treat that as
+# "codex review succeeded with no findings" — wrong.
+if [ "$CODEX_EXIT" -eq 0 ] && [ ! -s "$RESULT_MD" ]; then
+  echo "ERROR: codex exited 0 but $RESULT_MD was not written or is empty." >&2
+  echo "  See $STDERR_LOG and $EVENTS_LOG." >&2
+  CODEX_EXIT=2
+fi
+
+exit "$CODEX_EXIT"
