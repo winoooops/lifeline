@@ -5,7 +5,7 @@
     {
       "name": "lifeline",
       "source": "./",
-      "description": "Autonomous harness engineer for Claude Code — autonomous dev loop, paired Codex review, PR opener, PR finisher, codex-paired spec planner"
+      "description": "Agent workflow for autonomous harness engineering on Claude Code — autonomous dev loop, paired Codex review, PR opener, PR finisher, codex-paired spec planner"
     }
   ]
 }

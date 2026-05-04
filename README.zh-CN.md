@@ -1,8 +1,12 @@
-# lifeline — Claude Code 的自主开发 Harness 工程师
+# lifeline — Claude Code 的自主 Harness 工程
 
 [English](./README.md) | 简体中文
 
-一个独立的 Claude Code [插件市场](https://docs.claude.com/en/docs/claude-code/plugins)，把 Claude Code 变成一名 **自主开发 Harness 工程师**：收集需求、头脑风暴产品规格、将其拆解为分阶段的功能列表，然后驱动一个 coder + 跨厂商 reviewer 循环，直到每个功能都通过一个 clean 的 PR 上线。六个 Skills 覆盖完整的开发生命周期 —— 自主代理循环、本地 + 云端代码评审、PR 创建与合并、以及与 Codex 配对的设计规格撰写。
+一个独立的 Claude Code [插件市场](https://docs.claude.com/en/docs/claude-code/plugins)，提供端到端的 **代理工作流**，用于自主 Harness 工程实践。该工作流把多个专职代理串成单一流水线 —— 初始化代理、coder、本地 reviewer、云端 reviewer、PR 创建器、PR 合并器 —— 接收一段功能描述、最终以一个 clean 的 PR 交付：
+
+> 需求 → 头脑风暴产品规格 → 分阶段功能列表 → coder + 跨厂商 reviewer 循环 → 云端评审修复循环 → 合并 PR
+
+六个 Skills 端到端覆盖整个工作流：自主代理循环、本地 + 云端代码评审、PR 创建与合并、以及与 Codex 配对的设计规格撰写。
 
 ## Skills
 

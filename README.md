@@ -1,8 +1,12 @@
-# lifeline — autonomous harness engineer for Claude Code
+# lifeline — autonomous harness engineering for Claude Code
 
 English | [简体中文](./README.zh-CN.md)
 
-A standalone Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugins) that turns Claude Code into an **autonomous harness engineer**: it gathers requirements, brainstorms a product spec, decomposes it into a phased feature list, then drives a coder + cross-vendor reviewer loop until every feature ships behind a clean PR. Six skills cover the full development lifecycle — autonomous agent loop, local + cloud code review, PR opening + finishing, and Codex-paired spec planning.
+A standalone Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugins) that delivers an end-to-end **agent workflow** for autonomous harness engineering. The workflow chains specialist agents — initializer, coder, local reviewer, cloud reviewer, PR opener, PR finisher — into a single pipeline that takes a feature description and ships it behind a clean PR:
+
+> requirements → brainstormed product spec → phased feature list → coder + cross-vendor reviewer loop → cloud-review fix loop → merged PR
+
+Six skills cover the workflow end-to-end: autonomous agent loop, local + cloud code review, PR opening + finishing, and Codex-paired spec planning.
 
 ## Skills
 
