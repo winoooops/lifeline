@@ -4,6 +4,21 @@
 .lifeline-upsource-review/
 .lifeline-planner/
 .codex-reviews/
+.harness-github-review/
+
+# Harness Python artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+harness/.venv/
+harness/.env
+
+# Harness runtime files (generated per iteration, not source)
+app_spec.md
+feature_list.json
+claude-progress.txt
+.feature_list_stamp.json
+harness/prompts/app_spec.md
 
 # Editor / OS noise
 .DS_Store
