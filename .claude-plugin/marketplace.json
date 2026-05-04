@@ -1,0 +1,11 @@
+{
+  "name": "lifeline",
+  "owner": { "name": "winoooops" },
+  "plugins": [
+    {
+      "name": "lifeline",
+      "source": "./",
+      "description": "Unified agent toolkit — autonomous loop, code review, PR opener, PR finisher, codex-paired spec planner"
+    }
+  ]
+}

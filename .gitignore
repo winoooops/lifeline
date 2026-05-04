@@ -1,0 +1,13 @@
+# Lifeline scratch directories — also self-bootstrapped via .git/info/exclude
+# in any consumer repo by the skills themselves. Listing them here keeps
+# the lifeline repo clean while developing.
+.lifeline-upsource-review/
+.lifeline-planner/
+.codex-reviews/
+
+# Editor / OS noise
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
