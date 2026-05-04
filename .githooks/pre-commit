@@ -2,7 +2,9 @@
 # Lifeline verifier — refuses any commit that re-introduces harness-plugin
 # references into the plugin tree. Some files are exempted because the
 # old names appear there for legitimate reasons:
-#   - README.md, CHANGELOG.md  — document the harness → lifeline migration
+#   - README*.md, CHANGELOG.md — document the harness → lifeline migration
+#                                (covers README.md and translations like
+#                                 README.zh-CN.md)
 #   - .gitignore               — keeps ignoring the legacy artifact dir so
 #                                migrating users don't accidentally commit it
 #   - *.jsonl                  — captured Claude CLI session fixtures used
@@ -21,7 +23,7 @@
 set -euo pipefail
 
 if hits=$(grep -rnE \
-  --exclude=README.md --exclude=CHANGELOG.md --exclude=.gitignore \
+  --exclude='README*.md' --exclude=CHANGELOG.md --exclude=.gitignore \
   --exclude='*.jsonl' \
   --exclude-dir=.git --exclude-dir=.githooks \
   --exclude-dir=__pycache__ --exclude-dir=.pytest_cache --exclude-dir=.venv \

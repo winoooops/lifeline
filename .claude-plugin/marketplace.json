@@ -5,7 +5,7 @@
     {
       "name": "lifeline",
       "source": "./",
-      "description": "Unified agent toolkit — autonomous loop, code review, PR opener, PR finisher, codex-paired spec planner"
+      "description": "Autonomous harness engineer for Claude Code — autonomous dev loop, paired Codex review, PR opener, PR finisher, codex-paired spec planner"
     }
   ]
 }

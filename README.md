@@ -1,6 +1,8 @@
-# lifeline — agent toolkit for Claude Code
+# lifeline — autonomous harness engineer for Claude Code
 
-A standalone Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugins) that bundles six skills for the AI-assisted development lifecycle: autonomous agent loop, local + cloud code review, PR opening + finishing, and codex-paired spec planning.
+English | [简体中文](./README.zh-CN.md)
+
+A standalone Claude Code [plugin marketplace](https://docs.claude.com/en/docs/claude-code/plugins) that turns Claude Code into an **autonomous harness engineer**: it gathers requirements, brainstorms a product spec, decomposes it into a phased feature list, then drives a coder + cross-vendor reviewer loop until every feature ships behind a clean PR. Six skills cover the full development lifecycle — autonomous agent loop, local + cloud code review, PR opening + finishing, and Codex-paired spec planning.
 
 ## Skills
 
@@ -129,6 +131,10 @@ After cloning, enable the verifier pre-commit hook (refuses commits that re-intr
 ```bash
 git config core.hooksPath .githooks
 ```
+
+## Acknowledgments
+
+The `harness/` Python orchestrator that powers `/lifeline:loop` is adapted from Anthropic's [autonomous-coding quickstart](https://github.com/anthropics/claude-quickstarts/tree/main/autonomous-coding). The two-agent (initializer + coder) pattern, `feature_list.json` scheduling, and settings-isolation security model originated there. Lifeline extends the original with: paired local + cloud Codex review loops, PR open/finish via `gh`, a self-driving `upsource-review` fix loop that polls both Claude Code Review and `chatgpt-codex-connector`, and an LLM-backed allowlist judge for bash command policy.
 
 ## License
 
