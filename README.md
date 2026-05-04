@@ -96,6 +96,14 @@ One subtlety: the scratch directory was renamed from `.harness-github-review/` t
 - [GitHub CLI](https://cli.github.com/) (`gh`) authenticated (used by `upsource-review`, `request-pr`, `approve-pr`)
 - `git`, GNU coreutils, optionally `timeout` (skills degrade gracefully if missing)
 
+## Contributing
+
+After cloning, enable the verifier pre-commit hook (refuses commits that re-introduce `harness-plugin` references — see `.githooks/pre-commit`):
+
+```bash
+git config core.hooksPath .githooks
+```
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).

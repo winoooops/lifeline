@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Lifeline verifier — refuses any commit that re-introduces harness-plugin
+# references into the plugin tree. README/CHANGELOG are exempted because
+# they document the harness → lifeline migration with the literal old names
+# where unavoidable.
+#
+# Patterns checked (specific, not the bare word "harness"):
+#   \bharness-plugin\b       — plugin name in cache paths, slash refs
+#   plugins/harness/         — old in-tree source path
+#   \.harness-github-review  — old artifact directory
+#   /harness-                — slash-command prefixes (/harness-plugin:, /harness-loop, etc.)
+#
+# To bypass for a one-off legitimate reason: git commit --no-verify
+# (and add a justification in the commit body).
+
+set -euo pipefail
+
+if hits=$(grep -rnE --exclude=README.md --exclude=CHANGELOG.md \
+  --exclude-dir=.git --exclude-dir=.githooks \
+  '(\bharness-plugin\b|plugins/harness/|\.harness-github-review\b|/harness-)' .); then
+  echo "ERROR: lifeline verifier found harness-plugin references:" >&2
+  echo "$hits" | sed 's/^/  /' >&2
+  echo "" >&2
+  echo "Either rewrite the references or, if intentional, commit with --no-verify" >&2
+  echo "and justify in the body." >&2
+  exit 1
+fi
