@@ -6,7 +6,7 @@ A standalone Claude Code [plugin marketplace](https://docs.claude.com/en/docs/cl
 
 | Skill | What it does |
 | --- | --- |
-| `/lifeline:loop` | Launch the VIBM autonomous development lifeline — gathers requirements, brainstorms a spec, generates `app_spec.md`, and starts the agent loop. |
+| `/lifeline:loop` | Launch the autonomous development harness — gathers requirements, brainstorms a spec, generates `app_spec.md`, and starts the agent loop. Project- and language-agnostic; reads the project's `CLAUDE.md` / `AGENTS.md` for stack-specific build/test/lint commands. |
 | `/lifeline:review` | Run a local Codex code review against the staged diff (`codex exec review --base main`). Saves to `.codex-reviews/latest.md`. |
 | `/lifeline:upsource-review` | Self-driving loop that fetches PR review findings from GitHub (Claude Code Review + chatgpt-codex-connector), fixes them in atomic per-cycle batches, runs Codex `verify` on the staged diff, commits, pushes, replies + resolves connector threads, and polls for the next review. |
 | `/lifeline:approve-pr` | Finish a PR end-to-end — squash + delete remote branch, sync local main, delete the local feature branch, and clean up associated git worktrees safely. |
@@ -15,73 +15,99 @@ A standalone Claude Code [plugin marketplace](https://docs.claude.com/en/docs/cl
 
 ## Install
 
-Two-step install (the `marketplace add` command alone only registers the catalog; `plugin install` is what activates the skills):
+Lifeline ships as a Claude Code plugin marketplace. Inside any Claude Code session, run:
 
 ```
-/plugin marketplace add winoooops/lifeline       # registers the marketplace catalog
-/plugin install lifeline@lifeline                # installs the plugin from it (plugin@marketplace)
+/plugin marketplace add winoooops/lifeline       # 1. registers the marketplace catalog
+/plugin install lifeline@lifeline                # 2. installs the plugin from it (plugin@marketplace)
+/reload-plugins                                  # 3. surfaces the new slash commands in this session
 ```
+
+Both steps are required — `marketplace add` alone only registers the catalog; `plugin install` activates the skills. The `winoooops/lifeline` shorthand resolves to `https://github.com/winoooops/lifeline`; you can also pass the full Git URL.
 
 To install from a local clone instead (e.g. for development):
 
 ```
 /plugin marketplace add /absolute/path/to/lifeline
 /plugin install lifeline@lifeline
+/reload-plugins
 ```
 
-After install, `/reload-plugins` to surface the new slash commands in the current Claude Code session.
+To uninstall:
+
+```
+/plugin uninstall lifeline@lifeline
+/plugin marketplace remove lifeline
+```
+
+To upgrade to the latest commit on `main` after install:
+
+```
+/plugin marketplace update lifeline
+/plugin install lifeline@lifeline
+```
+
+### What gets installed
+
+`/plugin install` syncs the entire repository into `~/.claude/plugins/cache/lifeline/lifeline/<version>/`, including:
+
+- The 6 skills under `skills/` (autocompleted as `/lifeline:<skill>` after `/reload-plugins`).
+- The `harness/` Python orchestrator that `/lifeline:loop` invokes — make sure `python3` and the deps in `harness/requirements.txt` are available on `$PATH` before launching the loop. Install the deps once with `pip3 install -r ~/.claude/plugins/cache/lifeline/lifeline/<version>/harness/requirements.txt`.
+- The `.claude-plugin/marketplace.json` and `plugin.json` manifests Claude Code reads to register skills.
 
 ### Autocomplete workaround
 
-Plugin skills currently don't appear in `/` autocomplete due to a [known Claude Code bug](https://github.com/anthropics/claude-code/issues/18949). To enable autocomplete, create thin command wrappers in `~/.claude/commands/`:
+Plugin skills currently don't appear in `/` autocomplete due to a [known Claude Code bug](https://github.com/anthropics/claude-code/issues/18949). The fix is to drop one thin wrapper file per skill into `~/.claude/commands/`. Run this once:
 
 ```bash
 mkdir -p ~/.claude/commands
-
-cat > ~/.claude/commands/lifeline-loop.md << 'EOF'
+while IFS='|' read -r slug desc; do
+  cat > ~/.claude/commands/lifeline-${slug}.md <<EOF
 ---
-description: Launch the VIBM autonomous development lifeline
+description: ${desc}
 ---
-Use the Skill tool to invoke `lifeline:loop`.
+Use the Skill tool to invoke \`lifeline:${slug}\`.
 EOF
-
-cat > ~/.claude/commands/lifeline-review.md << 'EOF'
----
-description: Run local Codex code review and fix issues
----
-Use the Skill tool to invoke `lifeline:review`.
-EOF
-
-cat > ~/.claude/commands/lifeline-upsource-review.md << 'EOF'
----
-description: Fetch and fix Codex review findings from current PR
----
-Use the Skill tool to invoke `lifeline:upsource-review`.
-EOF
-
-cat > ~/.claude/commands/lifeline-approve-pr.md << 'EOF'
----
-description: Finish a PR end-to-end (squash, delete branches, clean worktrees)
----
-Use the Skill tool to invoke `lifeline:approve-pr`.
-EOF
-
-cat > ~/.claude/commands/lifeline-request-pr.md << 'EOF'
----
-description: Open a PR from the current branch with an autogenerated body
----
-Use the Skill tool to invoke `lifeline:request-pr`.
-EOF
-
-cat > ~/.claude/commands/lifeline-planner.md << 'EOF'
----
-description: Brainstorm a design spec with automatic Codex review on the result
----
-Use the Skill tool to invoke `lifeline:planner`.
-EOF
+done <<'SKILLS'
+loop|Launch the autonomous development harness
+review|Run local Codex code review against the staged diff
+upsource-review|Fetch and fix PR review findings (Claude + Codex) in a self-driving loop
+approve-pr|Finish a PR end-to-end (squash, delete branches, clean worktrees)
+request-pr|Open a PR from the current branch with an autogenerated body
+planner|Brainstorm a design spec with automatic Codex review on the result
+SKILLS
 ```
 
-After `/reload-plugins`, the `/lifeline-*` aliases appear in autocomplete. The `/lifeline:*` skill invocations continue to work when typed directly.
+After `/reload-plugins`, the `/lifeline-*` aliases appear in autocomplete. Typing `/lifeline:*` directly continues to work either way.
+
+## Companion GitHub Action — `Claude PR Review`
+
+`/lifeline:upsource-review` polls **a real PR review comment** authored by `github-actions[bot]`. To produce that comment, run the [Claude PR Review workflow](.github/workflows/claude-review.yml) on every PR. Lifeline ships a working copy you can drop into any project:
+
+| File | Purpose |
+| --- | --- |
+| `.github/workflows/claude-review.yml` | Runs [`anthropics/claude-code-action@v1`](https://github.com/anthropics/claude-code-action) on PR open/sync, returns structured JSON, and posts a single aggregated `## Claude Code Review` comment with severity-tagged findings + IDEA blocks. |
+| `.github/codex/codex-output-schema.json` | The JSON schema the action constrains the model output to (severity, title, file, line range, IDEA fields). |
+
+**Setup (per repo):**
+
+```bash
+# From the lifeline plugin cache (after /plugin install lifeline@lifeline)
+LIFELINE=~/.claude/plugins/cache/lifeline/lifeline/<version>
+mkdir -p .github/workflows .github/codex
+cp "$LIFELINE/.github/workflows/claude-review.yml" .github/workflows/
+cp "$LIFELINE/.github/codex/codex-output-schema.json" .github/codex/
+```
+
+Then add a `CLAUDE_CODE_OAUTH_TOKEN` repo secret (Settings → Secrets and variables → Actions). Generate the token with `claude login --print-token` or follow the [Claude Code GitHub Actions docs](https://docs.claude.com/en/docs/claude-code/github-actions).
+
+The workflow reads `CLAUDE.md` / `AGENTS.md` / `docs/code-review.md` if present for project-specific review standards — keep one of those at the repo root if you want consistent review output.
+
+**How it pairs with lifeline:**
+
+1. PR opens → workflow runs → bot posts `## Claude Code Review` comment.
+2. You run `/lifeline:upsource-review` → it fetches that comment + any inline comments from `chatgpt-codex-connector`, fixes findings in atomic per-cycle batches, runs `codex verify`, commits with watermark trailers, pushes, and polls for the next review.
+3. Loop continues until both reviewers report clean.
 
 ## Migration from harness-plugin
 

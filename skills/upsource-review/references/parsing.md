@@ -71,7 +71,7 @@ Verified on PR #109:
 
 ### 🟠 [HIGH] match_command recurses infinitely on cyclic npm script aliases
 
-📍 `/home/runner/work/vimeflow/vimeflow/src-tauri/src/agent/test_runners/matcher.rs` L103-108
+📍 `/home/runner/work/<repo>/<repo>/src/agent/test_runners/matcher.rs` L103-108
 🎯 Confidence: 93%
 
 <finding body, possibly multi-paragraph, may include code blocks>
@@ -102,7 +102,7 @@ footer.
 ### Path normalization
 
 Claude reports paths as runner-sandbox absolutes (e.g.
-`/home/runner/work/vimeflow/vimeflow/src/foo.tsx`). Resolve to repo-relative
+`/home/runner/work/<repo>/<repo>/src/foo.tsx`). Resolve to repo-relative
 deterministically. Loud-fail if no resolution exists — never silently
 fall back to `parts[-1]`.
 

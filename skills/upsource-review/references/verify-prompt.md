@@ -181,9 +181,12 @@ Verify is skipped only when **all three** are true:
 
 1. Every Finding in the cycle is severity LOW
 2. Every staged path matches `^docs/` OR `^[^/]*\.md$` OR `^[^/]*\.txt$`
-3. **No** staged path matches `^\.github/`, `^package(-lock)?\.json$`,
-   `^src-tauri/`, `^src/`, `^vite\.config\.`, `^tailwind\.config\.`,
-   `^eslint\.config\.`, `^tsconfig\.`, `^\.husky/`
+3. **No** staged path matches the project's "code" globs. The example
+   awk block below uses `^\.github/`, `^package(-lock)?\.json$`,
+   `^src/`, `^vite\.config\.`, `^tailwind\.config\.`, `^eslint\.config\.`,
+   `^tsconfig\.`, `^\.husky/` — extend with your project's source roots
+   and config files (e.g. `^src-tauri/`, `^cmd/`, `^app/`, `pyproject.toml`,
+   `Cargo.toml`, `go.mod`, …).
 
 ```bash
 should_skip_verify_docs_only() {
@@ -201,7 +204,6 @@ should_skip_verify_docs_only() {
       /^[^\/]*\.txt$/ { next }
       /^\.github\// { print "FORBIDDEN:" $0; next }
       /^package(-lock)?\.json$/ { print "FORBIDDEN:" $0; next }
-      /^src-tauri\// { print "FORBIDDEN:" $0; next }
       /^src\// { print "FORBIDDEN:" $0; next }
       /^vite\.config\./ { print "FORBIDDEN:" $0; next }
       /^tailwind\.config\./ { print "FORBIDDEN:" $0; next }

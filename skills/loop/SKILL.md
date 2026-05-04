@@ -1,12 +1,12 @@
 ---
 name: loop
-description: Launch the VIBM autonomous development lifeline — gathers requirements, brainstorms spec, generates app_spec.md, and starts the agent loop
+description: Launch the autonomous development harness — gathers requirements, brainstorms the spec, generates app_spec.md, and starts the agent loop
 tools: Read, Write, Edit, Bash, Grep, Glob, AskUserQuestion, Skill, Agent
 ---
 
 # /lifeline:loop — Autonomous Development Harness
 
-Launch the VIBM autonomous development lifeline. Gathers feature requirements, brainstorms the spec, generates `app_spec.md`, and starts the agent loop.
+Launch the autonomous development harness. Gathers feature requirements, brainstorms the spec, generates `app_spec.md`, and starts the agent loop. Project- and language-agnostic: the harness reads the project's existing `CLAUDE.md` / `AGENTS.md` / `README.md` for stack-specific build, test, and lint commands.
 
 ## Step 0: Branch & Environment (MANDATORY — do this FIRST)
 
@@ -14,7 +14,7 @@ The harness creates commits on behalf of the user. It must never commit to `main
 
 ### 0a. Put yourself on a feature branch in the primary checkout
 
-Per `rules/common/worktrees.md` §Principles, the **main agent works on a feature branch in the primary checkout** and **does not** enter a worktree. The user runs `npm run tauri:dev` and watches the diff viewer from the primary checkout — edits inside `.claude/worktrees/` are invisible to both.
+The **main agent works on a feature branch in the primary checkout** and **does not** enter a worktree. The user typically runs the project's dev server and watches its diff viewer from the primary checkout — edits inside `.claude/worktrees/` are invisible to both.
 
 Check the current branch:
 
@@ -28,9 +28,9 @@ git branch --show-current
   ```
 - If you're already on a feature branch, stay put.
 
-**Do NOT call `EnterWorktree`.** The `EnterWorktree` instruction that appeared in earlier revisions of this skill is obsolete — it conflicts with `rules/common/worktrees.md`. Worktrees are only for the harness's per-feature Coder subprocesses (future architecture) and for dispatched parallel subagents, not for the main agent driving this skill.
+**Do NOT call `EnterWorktree`.** The `EnterWorktree` instruction that appeared in earlier revisions of this skill is obsolete. Worktrees are only for the harness's per-feature Coder subprocesses (future architecture) and for dispatched parallel subagents, not for the main agent driving this skill.
 
-The harness Python orchestrator itself runs in your primary checkout alongside you, commits land on your current branch, and the `block-main-commit.sh` PreToolUse hook enforces the "no commits on main" guard regardless.
+The harness Python orchestrator itself runs in your primary checkout alongside you, and commits land on your current branch.
 
 ### 0b. Environment sanity
 
@@ -57,7 +57,7 @@ Use the `AskUserQuestion` tool to ask the user TWO questions:
 
 - Header: "Feature"
 - Options:
-  - "Full VIBM app" — Build the complete conversation manager (all screens, data model, IPC layer)
+  - "Full app" — Build the complete application (all screens, data model, external interfaces)
   - "Specific feature" — Build one feature or module (user will describe in the text input)
 - multiSelect: false
 
@@ -81,11 +81,11 @@ skill: "superpowers:brainstorming"
 When brainstorming, focus on producing a **product specification** for the harness, NOT an implementation plan. The brainstorming output should cover:
 
 - **Overview** — What the feature/app does in 2-3 sentences
-- **Tech Stack** — Tauri 2, React 19 + TypeScript, Rust, Vitest, Testing Library, ESLint, Prettier, CSpell, Storybook
+- **Tech Stack** — Languages, frameworks, test runners, lint/format tools, CI, package manager. Read the project's `README.md` / `CLAUDE.md` / `AGENTS.md` first; only re-state what's missing or genuinely new for this feature.
 - **Core Features** — Bulleted list of every feature with brief description
-- **Data Model** — TypeScript interfaces and matching Rust structs for all entities
-- **IPC Commands** — List of `#[tauri::command]` handlers with argument/return types
-- **UI Screens** — Description of each screen/view and its components
+- **Data Model** — Types, structs, schemas, or interfaces the system needs (use whichever notation fits the stack)
+- **External Interfaces** — APIs, IPC commands, RPC methods, or HTTP endpoints exposed
+- **UI / UX** — Screens, views, or CLI commands and their components
 - **User Flows** — Step-by-step flows for key interactions
 
 **IMPORTANT:** After brainstorming, do NOT invoke `writing-plans`. Instead, proceed to Step 3.
@@ -97,20 +97,19 @@ Take the brainstormed spec and write it to `harness/prompts/app_spec.md` using t
 Structure the file as:
 
 ```markdown
-# VIBM — App Specification
+# <Project Name> — App Specification
 
 ## Overview
 
-[from brainstorming]
+[from brainstorming — 2-3 sentences]
 
 ## Tech Stack
 
-- Framework: Tauri 2
-- Frontend: React 19 + TypeScript (arrow-function components)
-- Backend: Rust (Tauri commands, managed state)
-- Testing: Vitest + Testing Library (frontend), cargo test (backend)
-- Linting: ESLint flat config, cargo clippy
-- Formatting: Prettier, cargo fmt
+- Language(s): [from brainstorming]
+- Framework(s): [from brainstorming]
+- Test runner: [from brainstorming]
+- Lint / format tools: [from brainstorming]
+- Other infrastructure (CI, hosting, package manager, …): [from brainstorming]
 
 ## Core Features
 
@@ -118,19 +117,23 @@ Structure the file as:
 
 ## Data Model
 
-[from brainstorming — TypeScript interfaces + Rust structs]
+[from brainstorming — types/structs/schemas in the project's preferred notation]
 
-## IPC Commands
+## External Interfaces
 
-[from brainstorming — command table with args/returns]
+[from brainstorming — APIs, IPC commands, RPC methods, or HTTP endpoints]
 
-## UI Screens
+## UI / UX
 
-[from brainstorming — screen descriptions]
+[from brainstorming — screen / view / CLI command descriptions]
 
 ## User Flows
 
 [from brainstorming — step-by-step flows]
+
+## Out of Scope
+
+[from brainstorming — anything explicitly NOT part of this phase]
 ```
 
 ## Step 4: Launch the Harness

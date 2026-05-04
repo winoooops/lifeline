@@ -1,5 +1,5 @@
 ---
-name: github-review
+name: upsource-review
 description: Fetch review findings from the current PR (Claude Code Review aggregated comments + chatgpt-codex-connector inline comments) and fix them in atomic per-cycle batches. Each cycle polls both reviewers, fixes findings, runs codex verify on the staged diff, commits with watermark trailers, pushes, replies + resolves connector threads, then polls for the next review. Mandates pattern-file appends in the same commit as the fix.
 tools: Read, Write, Edit, Bash, Grep, Glob
 ---
@@ -236,7 +236,7 @@ gh pr checks "$PR_NUMBER"
 ```
 
 If any checks **other than `Codex Code Review` and `Claude Code Review`**
-are failing (e.g., Code Quality Check, Unit Tests, Tauri Build):
+are failing (e.g., Code Quality Check, Unit Tests, Build):
 
 1. Read the failing check's log: `gh run view <run_id> --log-failed`
 2. Fix the issue (formatting, lint, type errors, test failures)
