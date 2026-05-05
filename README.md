@@ -124,7 +124,7 @@ One subtlety: the scratch directory was renamed from `.harness-github-review/` t
 ## Requirements
 
 - [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) ≥ 1.0
-- [Codex CLI](https://github.com/openai/codex) on `$PATH` (used by `review`, `upsource-review`, `planner`)
+- [Codex CLI](https://github.com/openai/codex) on `$PATH` (used by `review`, `upsource-review`, `planner`). Lifeline does **not** pin a Codex model — by default `codex` picks the auth-mode-correct default (e.g. ChatGPT-account auth has different available models than API-key auth). To pin a specific model anyway, `export LIFELINE_CODEX_MODEL=<name>` (e.g. `gpt-5.4`) before launching `/lifeline:loop`.
 - [GitHub CLI](https://cli.github.com/) (`gh`) authenticated (used by `upsource-review`, `request-pr`, `approve-pr`)
 - `git`, GNU coreutils, optionally `timeout` (skills degrade gracefully if missing)
 

@@ -124,7 +124,7 @@ cp "$LIFELINE/.github/codex/codex-output-schema.json" .github/codex/
 ## 系统要求
 
 - [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) ≥ 1.0
-- [Codex CLI](https://github.com/openai/codex) 在 `$PATH` 下（`review`、`upsource-review`、`planner` 使用）
+- [Codex CLI](https://github.com/openai/codex) 在 `$PATH` 下（`review`、`upsource-review`、`planner` 使用）。Lifeline **不** 强制指定 Codex 模型 —— 默认情况下 `codex` 会按当前的 auth 模式选择正确的默认模型（例如 ChatGPT-account auth 与 API-key auth 可用的模型列表不同）。如果你确实想固定一个模型，在启动 `/lifeline:loop` 之前 `export LIFELINE_CODEX_MODEL=<name>`（例如 `gpt-5.4`）。
 - [GitHub CLI](https://cli.github.com/) (`gh`) 已认证（`upsource-review`、`request-pr`、`approve-pr` 使用）
 - `git`、GNU coreutils、可选 `timeout`（缺失时 Skills 会优雅降级）
 

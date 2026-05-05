@@ -7,10 +7,33 @@ The Coordinator calls these functions directly — no SDK session needed.
 """
 
 import json
+import os
 import re
 import subprocess
 import time
 from pathlib import Path
+
+
+def _build_local_review_cmd(base_branch: str) -> list[str]:
+    """Build the codex argv. Pulled out so the model-selection policy is
+    testable without invoking codex itself.
+
+    Model selection policy: by default omit --model so codex picks the
+    auth-mode-correct default (ChatGPT-account auth rejects some models,
+    and the available model names move fast). To pin a specific model,
+    export LIFELINE_CODEX_MODEL=<name> in your shell. Mirrors the no-pin
+    approach used by skills/upsource-review/scripts/verify.sh and
+    skills/planner/scripts/codex-review.sh.
+    """
+    cmd = [
+        "codex", "exec", "review",
+        "--base", base_branch,
+        "--full-auto",
+    ]
+    pinned_model = os.environ.get("LIFELINE_CODEX_MODEL", "").strip()
+    if pinned_model:
+        cmd.extend(["--model", pinned_model])
+    return cmd
 
 
 def run_local_review(project_dir: Path, base_branch: str = "main") -> dict:
@@ -22,16 +45,7 @@ def run_local_review(project_dir: Path, base_branch: str = "main") -> dict:
       - raw_review: str (the full Codex output)
       - findings: list (parsed if possible)
     """
-    # Pin gpt-5.4: ChatGPT-account auth (~/.codex/auth.json without API key)
-    # rejects gpt-5.2-codex with "model not supported when using Codex with a
-    # ChatGPT account". gpt-5.5 works but burns ChatGPT plan quota fast;
-    # gpt-5.4 is the cheaper ChatGPT-compatible option per user preference.
-    cmd = [
-        "codex", "exec", "review",
-        "--base", base_branch,
-        "--model", "gpt-5.4",
-        "--full-auto",
-    ]
+    cmd = _build_local_review_cmd(base_branch)
 
     try:
         result = subprocess.run(

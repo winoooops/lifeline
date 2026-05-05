@@ -1,6 +1,35 @@
 """Tests for review module — parsing and validation."""
 
-from review import parse_codex_output, parse_cloud_review_comment
+import pytest
+
+from review import _build_local_review_cmd, parse_codex_output, parse_cloud_review_comment
+
+
+def test_build_local_review_cmd_no_pin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default: omit --model so codex picks the auth-mode-correct default."""
+    monkeypatch.delenv("LIFELINE_CODEX_MODEL", raising=False)
+    cmd = _build_local_review_cmd("main")
+    assert cmd == ["codex", "exec", "review", "--base", "main", "--full-auto"]
+    assert "--model" not in cmd
+
+
+def test_build_local_review_cmd_with_pin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """LIFELINE_CODEX_MODEL set: append --model <value>."""
+    monkeypatch.setenv("LIFELINE_CODEX_MODEL", "gpt-5.4")
+    cmd = _build_local_review_cmd("develop")
+    assert cmd == [
+        "codex", "exec", "review",
+        "--base", "develop",
+        "--full-auto",
+        "--model", "gpt-5.4",
+    ]
+
+
+def test_build_local_review_cmd_blank_pin_treated_as_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Whitespace-only env value should not produce an empty --model arg."""
+    monkeypatch.setenv("LIFELINE_CODEX_MODEL", "   ")
+    cmd = _build_local_review_cmd("main")
+    assert "--model" not in cmd
 
 
 def test_parse_codex_output_no_findings():
