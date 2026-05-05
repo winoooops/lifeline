@@ -9,21 +9,30 @@
 #   ./scripts/codex-review.sh <hook> <artifact-path> [<scratch-dir>]
 #
 # Arguments:
-#   hook           — one of: spec-complete  (v1; v2 may add plan-complete)
+#   hook           — one of:
+#                      spec-complete    — full spec, end-of-methodology pass.
+#                      section-partial  — partial spec, per-section iteration.
 #                    Selects the prompt template under references/codex-prompts/.
 #   artifact-path  — path to the markdown file under review.
 #   scratch-dir    — optional; default ".lifeline-planner". The skill's
 #                    .git/info/exclude bootstrap is run against this dir.
 #
 # Outputs:
-#   <scratch-dir>/<hook>-prompt.md    — composed prompt (template + artifact)
+#   <scratch-dir>/<hook>-prompt.md    — composed prompt (template + deferrals + artifact)
 #   <scratch-dir>/<hook>-review.md    — codex's review markdown (THE result)
 #   <scratch-dir>/<hook>-events.log   — codex stdout (event-stream noise)
 #   <scratch-dir>/<hook>-stderr.log   — codex stderr
 #
-# Environment overrides (for tests):
-#   LIFELINE_CODEX_TIMEOUT  — seconds; default 300. Set to a small number
+# Environment overrides:
+#   LIFELINE_CODEX_TIMEOUT  — seconds; default 300. Tests use a small value
 #                             (e.g. 1) to force the timeout path.
+#   LIFELINE_SKILL_DIR      — explicit path to the planner skill directory.
+#                             See resolve-skill-dir.sh for the resolution order.
+#   LIFELINE_DEFERRALS_FILE — path to a markdown bullet list of items the
+#                             agent has deferred to later sections. Injected
+#                             into the prompt via the {{DEFERRALS}} placeholder
+#                             so codex stops re-flagging tracked items.
+#                             Default: <scratch-dir>/deferrals.md (if present).
 #
 # Exit codes:
 #   0    — codex returned non-empty review at <hook>-review.md (FULL path).
@@ -60,16 +69,25 @@ if [ ! -f "$ARTIFACT_PATH" ]; then
   exit 2
 fi
 
-# Resolve the prompt template for this hook. SKILL_DIR mirrors the
-# upsource-review pattern — try the install-cache path first, then the
-# repo-relative dev path.
-SKILL_DIR="skills/planner"
-[ -d "$SKILL_DIR/references/codex-prompts" ] || \
-  SKILL_DIR="$(git rev-parse --show-toplevel 2>/dev/null)/skills/planner"
+# Resolve the skill directory via the shared helper. Sibling-relative path
+# works because this script lives in $SKILL_DIR/scripts/.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+RESOLVER="$SCRIPT_DIR/resolve-skill-dir.sh"
+if [ ! -x "$RESOLVER" ]; then
+  echo "ERROR: missing or non-executable resolve-skill-dir.sh at $RESOLVER" >&2
+  exit 2
+fi
+
+SKILL_DIR="$("$RESOLVER")" || {
+  # Resolver already printed a helpful message to stderr; just propagate.
+  exit 2
+}
 
 TEMPLATE="$SKILL_DIR/references/codex-prompts/${HOOK}.md"
 if [ ! -f "$TEMPLATE" ]; then
   echo "ERROR: no prompt template for hook '$HOOK' at $TEMPLATE" >&2
+  echo "  Available hooks:" >&2
+  ls -1 "$SKILL_DIR/references/codex-prompts/" 2>/dev/null | sed 's/\.md$//; s/^/    /' >&2 || true
   exit 2
 fi
 
@@ -90,9 +108,23 @@ RESULT_MD="${SCRATCH_DIR}/${HOOK}-review.md"
 EVENTS_LOG="${SCRATCH_DIR}/${HOOK}-events.log"
 STDERR_LOG="${SCRATCH_DIR}/${HOOK}-stderr.log"
 
-# Build the composed prompt: template + the artifact under review.
+# Resolve deferrals content.
+# Precedence: explicit env var > scratch-dir/deferrals.md > "(none)".
+DEFERRALS_FILE="${LIFELINE_DEFERRALS_FILE:-${SCRATCH_DIR}/deferrals.md}"
+if [ -f "$DEFERRALS_FILE" ] && [ -s "$DEFERRALS_FILE" ]; then
+  DEFERRALS_CONTENT="$(cat "$DEFERRALS_FILE")"
+else
+  DEFERRALS_CONTENT="(none)"
+fi
+
+# Compose the prompt: template (with {{DEFERRALS}} substituted) + the artifact.
+# We use awk for the substitution rather than sed because the deferrals
+# content can contain arbitrary characters (slashes, backslashes, etc.).
 {
-  cat "$TEMPLATE"
+  awk -v deferrals="$DEFERRALS_CONTENT" '
+    /\{\{DEFERRALS\}\}/ { print deferrals; next }
+    { print }
+  ' "$TEMPLATE"
   printf '\n\n---\n\n## Document under review (`%s`)\n\n```markdown\n' "$ARTIFACT_PATH"
   cat "$ARTIFACT_PATH"
   printf '\n```\n'

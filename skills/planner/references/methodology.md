@@ -43,6 +43,28 @@ Focus questions on:
 Avoid questions whose answers you can infer from the codebase. If you
 already know the answer, state your assumption and move on.
 
+#### Sizing AskUserQuestion options
+
+Match option count to the real fork:
+
+- **Two options** when the fork is binary (apply/skip, yes/no, A/B).
+- **Three options** for a typical recommendation + alternative + "let
+  me discuss".
+- **Four options** only when there are genuinely four distinct paths.
+  Don't pad to four to fill the slot — filler options bias the user
+  and add noise.
+- **More than four**: ask a filtering question first ("which axis
+  matters most?"), then a follow-up with the surviving options. The
+  `AskUserQuestion` tool itself caps at four.
+
+Lead with the recommendation. The first option carries
+"(Recommended)" when there is a clear default.
+
+For substantive option choices (architecture forks, fix strategies),
+render each option as an IDEA block (Intent / Danger / Explain /
+Alternatives) before the `AskUserQuestion` call. The structured
+comparison resolves choices faster than prose.
+
 ### Step 3 — Propose 2-3 approaches with tradeoffs
 
 Once you understand the request, present 2-3 distinct ways to attack
@@ -98,11 +120,16 @@ Fix anything found. No need to re-review — just fix and move on.
 
 ```bash
 git add "$SPEC_FILE"
-git commit -m "spec(planner): <topic-slug>
+git commit -m "docs(spec): <topic-slug>
 
 <one-paragraph summary of what this spec defines>
 "
 ```
+
+The `docs(spec):` prefix passes `@commitlint/config-conventional`,
+which is the default in most projects. If your project's commitlint
+adds a custom `spec` type, swap to `spec(planner):` — but the default
+is `docs(spec):`.
 
 After this commit, the spec-complete hook (defined in SKILL.md) runs
 codex review on `$SPEC_FILE`.
