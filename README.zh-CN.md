@@ -10,14 +10,16 @@
 
 ## Skills
 
+按一个功能从设计到合并的全生命周期顺序排列 —— 设计 → 自主构建 → 本地评审 → 创建 PR → 修复 PR 评审结果 → 合并。
+
 | Skill | 功能 |
 | --- | --- |
+| `/lifeline:planner` | 自包含的设计规格撰写器：引导你完成头脑风暴方法论，将规格写入 `docs/superpowers/specs/`，然后自动在结果上运行 Codex 评审并应用你选择的修改。v1 仅生成规格 —— 实施计划请单独运行 `/superpowers:writing-plans`。 |
 | `/lifeline:loop` | 启动自主开发 Harness —— 收集需求、头脑风暴产品规格、生成 `app_spec.md`、启动代理循环。语言无关、项目无关；自动读取项目根目录的 `CLAUDE.md` / `AGENTS.md` 来获取项目特定的构建/测试/lint 命令。 |
 | `/lifeline:review` | 在已暂存的 diff 上运行本地 Codex 代码评审 (`codex exec review --base main`)，结果保存到 `.codex-reviews/latest.md`。 |
+| `/lifeline:request-pr` | 从当前分支打开 PR，自动生成标题与正文（Summary 来自 commit list，Test plan 占位）。与 `/lifeline:approve-pr` 配对使用。 |
 | `/lifeline:upsource-review` | 自驱动循环 —— 从 GitHub 拉取 PR 评审结果（Claude Code Review + chatgpt-codex-connector），按周期原子化批量修复，在已暂存的 diff 上运行 `codex verify`，提交、推送、回复并解决 connector 评审线程，然后轮询下一轮评审。 |
 | `/lifeline:approve-pr` | 端到端完成一个 PR —— squash + 删除远程分支、同步本地 main、删除本地 feature 分支，并安全地清理关联的 git worktrees。 |
-| `/lifeline:request-pr` | 从当前分支打开 PR，自动生成标题与正文（Summary 来自 commit list，Test plan 占位）。与 `/lifeline:approve-pr` 配对使用。 |
-| `/lifeline:planner` | 自包含的设计规格撰写器：引导你完成头脑风暴方法论，将规格写入 `docs/superpowers/specs/`，然后自动在结果上运行 Codex 评审并应用你选择的修改。v1 仅生成规格 —— 实施计划请单独运行 `/superpowers:writing-plans`。 |
 
 ## 安装
 
@@ -75,12 +77,12 @@ description: ${desc}
 Use the Skill tool to invoke \`lifeline:${slug}\`.
 EOF
 done <<'SKILLS'
+planner|头脑风暴设计规格并自动运行 Codex 评审
 loop|启动自主开发 Harness
 review|在已暂存的 diff 上运行本地 Codex 代码评审
+request-pr|从当前分支打开 PR，自动生成正文
 upsource-review|自驱动循环修复 PR 评审结果（Claude + Codex）
 approve-pr|端到端完成 PR（squash、删分支、清理 worktrees）
-request-pr|从当前分支打开 PR，自动生成正文
-planner|头脑风暴设计规格并自动运行 Codex 评审
 SKILLS
 ```
 
