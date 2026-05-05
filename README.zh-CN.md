@@ -140,7 +140,15 @@ git config core.hooksPath .githooks
 
 ## 致谢
 
-驱动 `/lifeline:loop` 的 `harness/` Python orchestrator 改编自 Anthropic 的 [autonomous-coding quickstart](https://github.com/anthropics/claude-quickstarts/tree/main/autonomous-coding)。最初的双代理（initializer + coder）模式、`feature_list.json` 调度和 settings-isolation 安全模型来源于该 demo；Lifeline 在此基础上扩展加入了：本地 + 云端 Codex 评审循环、通过 `gh` 的 PR 创建与合并、自驱动的 `upsource-review` 修复循环（同时轮询 Claude Code Review 和 `chatgpt-codex-connector`），以及一个 LLM 兜底的 bash 命令策略评审器。
+驱动 `/lifeline:loop` 的 `harness/` Python orchestrator 改编自 Anthropic 的 [autonomous-coding quickstart](https://github.com/anthropics/claude-quickstarts/tree/main/autonomous-coding)。最初的双代理（initializer + coder）模式、`feature_list.json` 调度和 settings-isolation 安全模型来源于该 demo。
+
+Lifeline 在原版基础上扩展：
+
+- **用 `claude -p` 子进程替换原 Python SDK 来启动 subagent** —— 原 quickstart 通过 Anthropic Python SDK 启动每个 subagent（initializer、coder），需要 `ANTHROPIC_API_KEY`。`/lifeline:loop` 改为通过 `claude -p` 命令行子进程来驱动 subagent，直接继承操作员现有的 Claude Code CLI 认证。**结果：一个 Claude Code "Coding agent" 订阅就足以运行完整的代理团队 —— 不需要 API key，也不需要单独的计费通道。** SDK 后端保留为可选 fallback（`--client sdk`），供需要自定义 `ANTHROPIC_BASE_URL`（代理、自建 gateway）或在 CLI 不可达环境运行的操作员使用。
+- 在 coder 迭代之上叠加了本地 + 云端 Codex 评审循环。
+- 通过 `gh` 实现 PR 创建与合并（`/lifeline:request-pr`、`/lifeline:approve-pr`）。
+- 自驱动的 `upsource-review` 修复循环，同时轮询 Claude Code Review 和 `chatgpt-codex-connector`。
+- LLM 兜底的 bash 命令策略评审器。
 
 ## 许可
 

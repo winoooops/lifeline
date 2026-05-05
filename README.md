@@ -140,7 +140,15 @@ git config core.hooksPath .githooks
 
 ## Acknowledgments
 
-The `harness/` Python orchestrator that powers `/lifeline:loop` is adapted from Anthropic's [autonomous-coding quickstart](https://github.com/anthropics/claude-quickstarts/tree/main/autonomous-coding). The two-agent (initializer + coder) pattern, `feature_list.json` scheduling, and settings-isolation security model originated there. Lifeline extends the original with: paired local + cloud Codex review loops, PR open/finish via `gh`, a self-driving `upsource-review` fix loop that polls both Claude Code Review and `chatgpt-codex-connector`, and an LLM-backed allowlist judge for bash command policy.
+The `harness/` Python orchestrator that powers `/lifeline:loop` is adapted from Anthropic's [autonomous-coding quickstart](https://github.com/anthropics/claude-quickstarts/tree/main/autonomous-coding). The two-agent (initializer + coder) pattern, `feature_list.json` scheduling, and settings-isolation security model originated there.
+
+Lifeline extends the original with:
+
+- **`claude -p` subprocess subagents in place of the Python SDK** — the original quickstart spawned each subagent (initializer, coder) through the Anthropic Python SDK, which required an `ANTHROPIC_API_KEY`. `/lifeline:loop` instead drives subagents through the `claude -p` command-line subprocess, inheriting the operator's existing Claude Code CLI auth. **Result: a Claude Code "Coding agent" subscription is sufficient to run the full agentic team — no API key, no separate billing path.** The SDK backend remains available as an opt-in fallback via `--client sdk` for operators who need a custom `ANTHROPIC_BASE_URL` (proxies, self-hosted gateways) or run outside the CLI's reach.
+- Paired local + cloud Codex review loops on top of the coder iteration.
+- PR open/finish via `gh` (`/lifeline:request-pr`, `/lifeline:approve-pr`).
+- A self-driving `upsource-review` fix loop that polls both Claude Code Review and `chatgpt-codex-connector`.
+- An LLM-backed allowlist judge for bash command policy.
 
 ## License
 
