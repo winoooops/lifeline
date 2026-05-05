@@ -33,6 +33,14 @@
 #                             into the prompt via the {{DEFERRALS}} placeholder
 #                             so codex stops re-flagging tracked items.
 #                             Default: <scratch-dir>/deferrals.md (if present).
+#   LIFELINE_CODEX_MODEL    — optional codex model name. When set, this script
+#                             passes `--model <name>` to `codex exec`. When
+#                             unset (the default), no `--model` flag is added —
+#                             codex picks its auth-mode-appropriate default.
+#                             Set this only when running on API-key auth, since
+#                             ChatGPT-account auth rejects explicit `--model`
+#                             selection. Mirrors the policy in harness/review.py
+#                             and skills/upsource-review/scripts/verify.sh.
 #
 # Exit codes:
 #   0    — codex returned non-empty review at <hook>-review.md (FULL path).
@@ -46,8 +54,10 @@
 #     which does not exist).
 #   - --output-last-message FILE captures the final assistant message (NOT
 #     --output-format json, which does not exist).
-#   - No --model: per ChatGPT-account auth, explicit model selection is
-#     rejected. Omitting lets codex pick the auth-mode-correct default.
+#   - --model is passed ONLY when LIFELINE_CODEX_MODEL is set. The default is
+#     to omit it so codex picks the auth-mode-correct default. ChatGPT-account
+#     auth rejects explicit model selection; pinning a model only works on
+#     API-key auth.
 #   - --sandbox read-only: codex is reviewing, not modifying.
 #   - External `timeout` wrapper: codex exec has no built-in timeout flag.
 #   - </dev/null on every invocation: codex has been observed to hang waiting
@@ -140,10 +150,21 @@ else
   TIMEOUT_PREFIX=""
 fi
 
+# Build the optional `--model <name>` flag pair. Passing the array
+# expansion via `${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}` is portable under
+# `set -u` even when MODEL_ARGS is empty (older bash + set -u rejects
+# the bare `"${MODEL_ARGS[@]}"` expansion when the array is unset).
+PINNED_MODEL="${LIFELINE_CODEX_MODEL:-}"
+MODEL_ARGS=()
+if [ -n "$PINNED_MODEL" ]; then
+  MODEL_ARGS+=("--model" "$PINNED_MODEL")
+fi
+
 set +e
 $TIMEOUT_PREFIX codex exec \
   --sandbox read-only \
   --output-last-message "$RESULT_MD" \
+  ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
   -- "$PROMPT_BODY" \
   < /dev/null \
   > "$EVENTS_LOG" \

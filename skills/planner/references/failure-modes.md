@@ -1,8 +1,17 @@
 # Planner failure modes and end states
 
-`/lifeline:planner` produces three explicit end states for the spec it
-generates. Each one is observable in metadata so a consumer (or future
-session) can tell what actually happened.
+`/lifeline:planner` produces an end state for **each artifact** it
+touches. Per-run, the artifacts are:
+
+- The **spec** (always, when the run reaches Step 7).
+- The **plan** (only when the user opted into Step 9 plan generation).
+
+Each artifact independently lands in one of: `FULL`, `DEGRADED`, or
+`ABORTED`. The plan side adds one more state, `PARTIAL_PLAN`, for the
+case where the plan was written but the reviewer never ran (because
+`/superpowers:writing-plans` chained onward into execution despite our
+stop-after-write instruction). Each end state is observable in metadata
+so a consumer (or future session) can tell what actually happened.
 
 ## End-state taxonomy
 
@@ -67,6 +76,33 @@ that aborted and a one-line reason. Planner exits non-zero so callers
 **Consumer signal**: no spec file exists at the discovery path (or the
 file exists but isn't committed — Step 5 wrote it but Step 7 never
 ran).
+
+### ⚠ PARTIAL_PLAN (plan side only)
+
+**Means**: Step 9 invoked `/superpowers:writing-plans`, which wrote
+and committed an implementation plan. But the skill chained onward
+into an execution skill (e.g., `executing-plans`,
+`subagent-driven-development`) despite the explicit stop-after-write
+instruction in the invocation, so control never returned to planner
+and codex never reviewed the plan.
+
+**No retry. No blocking. No plan footer.**
+
+**Surfaced as**: yellow warning in the planner's final summary, naming
+the plan path and the manual recovery command:
+
+```
+$SKILL_DIR/scripts/codex-review.sh plan-complete <plan-path>
+```
+
+**Consumer signal**: plan file exists, but the codex-reviewed footer
+is absent. Distinguishable from spec-side DEGRADED only by inspecting
+which artifact is footer-less.
+
+This state exists because the chain-on-completion behavior of
+`/superpowers:writing-plans` is upstream — we ask it not to chain, but
+some versions ignore the request. PARTIAL_PLAN is the explicit "the
+plan is here, but we never got to review it" signal.
 
 ## Why DEGRADED doesn't retry
 

@@ -53,7 +53,7 @@ Heavy detail lives in `references/`. SKILL.md keeps the orchestration contract.
 
 ### Step 0 — Mode prompts (asked at the very start)
 
-Before anything else, ask two questions back-to-back:
+Before anything else, ask three questions back-to-back:
 
 ```
 AskUserQuestion:
@@ -71,9 +71,31 @@ AskUserQuestion:
       description: "I show each finding individually. For each: apply / skip / clarify."
     - label: "Auto-apply"
       description: "Apply all HIGH/MEDIUM findings, then show a single consolidated diff before commit."
+
+AskUserQuestion:
+  question: "Which codex model should review your spec?"
+  options:
+    - label: "Codex default (Recommended)"
+      description: "Codex CLI picks the model for your auth mode. Works for both ChatGPT-account auth and API-key auth. No --model flag passed."
+    - label: "Pin a specific model"
+      description: "Override with a custom model name (e.g. gpt-5.5). Only works on API-key auth — ChatGPT-account auth rejects explicit --model selection."
 ```
 
-Capture the answers as `$ITERATION_MODE` (`per-section` or `end-of-spec`) and `$APPLY_MODE` (`per-finding` or `auto`). Both apply modes still gate on a final user confirmation before each commit.
+Capture the answers as:
+
+- `$ITERATION_MODE` — `per-section` or `end-of-spec`.
+- `$APPLY_MODE` — `per-finding` or `auto`.
+- `$CODEX_MODEL` — empty string for "Codex default", or a non-empty model name when the user picks "Pin a specific model" (in which case ask a follow-up free-text question for the model name and capture it).
+
+Apply modes still gate on a final user confirmation before each commit.
+
+The model choice is plumbed through to `codex-review.sh` via the `LIFELINE_CODEX_MODEL` env var. Every invocation in this skill uses:
+
+```bash
+LIFELINE_CODEX_MODEL="$CODEX_MODEL" "$SKILL_DIR/scripts/codex-review.sh" <hook> <artifact>
+```
+
+When `$CODEX_MODEL` is empty, the env var is empty too, and the script omits `--model` entirely (matching the no-pin default).
 
 ### Step 0.5 — Capture baseline state
 
@@ -113,9 +135,10 @@ Insert this loop INSIDE Step 4 of the methodology. For each section:
 3. **Append the section** to `$SPEC_FILE` (creating the file on the first iteration; append on subsequent).
 4. **Run codex** against the cumulative file:
    ```bash
-   "$SKILL_DIR/scripts/codex-review.sh" section-partial "$SPEC_FILE"
+   LIFELINE_CODEX_MODEL="$CODEX_MODEL" \
+     "$SKILL_DIR/scripts/codex-review.sh" section-partial "$SPEC_FILE"
    ```
-   The script reads `$DEFERRALS_FILE` automatically and injects it into the prompt.
+   The script reads `$DEFERRALS_FILE` automatically and injects it into the prompt. When `$CODEX_MODEL` is empty, no `--model` flag is passed.
 5. **Read the review** at `${SCRATCH_DIR}/section-partial-review.md`.
 6. **Walk findings** per `$APPLY_MODE`. For each finding:
    - **Apply**: Edit the spec file. Move on.
@@ -154,7 +177,8 @@ Normal flow uses the captured path from methodology Step 5 — discovery is for 
 SKILL_DIR="$("$(dirname "$0")/resolve-skill-dir.sh")" || exit 2
 
 set +e
-"$SKILL_DIR/scripts/codex-review.sh" spec-complete "$SPEC_FILE"
+LIFELINE_CODEX_MODEL="$CODEX_MODEL" \
+  "$SKILL_DIR/scripts/codex-review.sh" spec-complete "$SPEC_FILE"
 HOOK_EXIT=$?
 set -e
 ```
@@ -209,9 +233,80 @@ Do NOT retry. Do NOT block. Print a prominent warning naming:
 
 **No footer is appended.** The absence of the footer is the load-bearing "this is unreviewed" signal.
 
-### Step 9 — Optional retrospective
+### Step 9 — Optional plan generation + plan review
 
-After the final summary, offer (do not force):
+After the spec has been committed and codex-reviewed (Step 8 reached the FULL state), offer the user the option to continue into implementation planning. This is a hand-off to `/superpowers:writing-plans` followed by a codex review of the plan it produces.
+
+```
+AskUserQuestion:
+  question: "Continue into implementation plan generation?"
+  options:
+    - label: "Yes, write the plan and review it (Recommended)"
+      description: "Invoke /superpowers:writing-plans against the spec. After it returns, codex reviews the plan and we walk findings the same way we did for the spec."
+    - label: "Skip — I'll plan separately"
+      description: "Stop here. The spec is committed and codex-reviewed; you can run /superpowers:writing-plans yourself later."
+```
+
+If the user picks **Skip**: jump to Step 10 (retrospective).
+
+If the user picks **Yes**, run the plan integration:
+
+#### 9.A — Invoke `/superpowers:writing-plans`
+
+Use the `Skill` tool to invoke `superpowers:writing-plans` with the spec path as context. **Important constraint:** `superpowers:writing-plans` chains to execution skills (`executing-plans` / `subagent-driven-development`) at its terminal state by default. Pass an explicit instruction in the invocation:
+
+```
+Skill: superpowers:writing-plans
+args: |
+  Spec: $SPEC_FILE
+
+  Generate the implementation plan for this spec. STOP after the plan is
+  written and committed — do NOT chain to executing-plans or any execution
+  skill. Control must return to /lifeline:planner so codex can review the
+  plan before any implementation begins.
+```
+
+Capture the plan path the skill writes (typically `docs/superpowers/plans/<YYYY-MM-DD>-<topic>-plan.md` or whatever the skill's convention is) as `$PLAN_FILE`.
+
+If `superpowers:writing-plans` chains anyway (despite the instruction) and execution begins, abort the plan-review pass and treat the planner run as **PARTIAL_PLAN** — the plan exists but is unreviewed; document this in the final summary so the user knows to run codex against the plan manually.
+
+#### 9.B — Run plan-complete codex hook
+
+```bash
+set +e
+LIFELINE_CODEX_MODEL="$CODEX_MODEL" \
+  "$SKILL_DIR/scripts/codex-review.sh" plan-complete "$PLAN_FILE"
+HOOK_EXIT=$?
+set -e
+```
+
+Codex output goes to `${SCRATCH_DIR}/plan-complete-review.md`. Same exit-code routing as the spec hook (Step 8.B).
+
+The script auto-injects `$DEFERRALS_FILE` (which by this point may include items deferred during spec-side iteration, plus any plan-side deferrals). Codex will skip those tracked items.
+
+#### 9.C — Walk plan findings and commit
+
+Identical to Step 8.C but against `$PLAN_FILE`:
+
+- Walk findings per `$APPLY_MODE`.
+- Apply approved findings via Edit on `$PLAN_FILE`.
+- Commit applied changes with `docs(plan): apply codex feedback`.
+- Append the codex-reviewed footer to the plan via `update-footer.sh`.
+- Commit the footer with `docs(plan): mark plan codex-reviewed`.
+
+#### 9.D — Plan-side DEGRADED path
+
+If the plan-complete hook fails for any reason (codex unavailable, timeout, empty output), do NOT retry. Print a warning naming the plan path, the reason, and the manual recovery command:
+
+```
+$SKILL_DIR/scripts/codex-review.sh plan-complete <PLAN_FILE>
+```
+
+Track the run as **DEGRADED on plan side**; the spec is still FULL.
+
+### Step 10 — Optional retrospective
+
+After Step 9 completes (or was skipped), offer (do not force):
 
 ```
 AskUserQuestion:
@@ -225,10 +320,11 @@ AskUserQuestion:
 
 If yes: write a markdown file with sections for "What worked", "Friction points", "Deferrals tracked" (read from `$DEFERRALS_FILE`), and "Suggestions for next time". The file is for the user's reference — it is NOT committed automatically.
 
-### Step 10 — Final summary
+### Step 11 — Final summary
 
-Print a 4-line status block:
+Print a status block. Shape depends on whether plan generation ran:
 
+When plan generation was skipped:
 ```
 spec: ✓ FULL  | ⚠ DEGRADED  | ✗ ABORTED
 path: <SPEC_FILE>
@@ -236,9 +332,19 @@ reason: <one-line, only present for DEGRADED or ABORTED>
 next: run /superpowers:writing-plans against this spec when ready
 ```
 
+When plan generation ran:
+```
+spec: ✓ FULL  | ⚠ DEGRADED  | ✗ ABORTED
+plan: ✓ FULL  | ⚠ DEGRADED  | ⚠ PARTIAL_PLAN  | (skipped)
+spec-path: <SPEC_FILE>
+plan-path: <PLAN_FILE>  (only when plan was written)
+reason: <one-line per degraded side, when applicable>
+next: <next-step hint based on combined state>
+```
+
 Exit code:
 
-- `0` for FULL or DEGRADED (the spec exists and is the user's to act on)
+- `0` for any combination where at least the spec exists (FULL, DEGRADED, PARTIAL_PLAN)
 - non-zero for ABORTED (no spec was produced)
 
 ## Conventions when calling AskUserQuestion
@@ -250,26 +356,34 @@ Exit code:
 
 ## Commit message convention
 
-Both commits planner makes use the **`docs(spec):` prefix**:
+All planner commits use the `docs(<scope>):` prefix where `<scope>` is `spec` or `plan` depending on which artifact the commit touches. This passes `@commitlint/config-conventional` (the standard config used by most projects).
 
-- Spec write: `docs(spec): <topic-slug>` — written by methodology Step 7.
-- Iteration commit: `docs(spec): apply codex feedback` — written by Step 8.C when findings are applied.
-- Footer commit: `docs(spec): mark spec codex-reviewed` — written by Step 8.C tail.
+Spec-side commits (Step 7 + Step 8):
 
-This passes `@commitlint/config-conventional` (the standard config used by most projects). If your project's commitlint adds a custom `spec` type, you may swap to `spec(planner):` — but the default is `docs(spec):`.
+- `docs(spec): <topic-slug>` — initial spec write (methodology Step 7).
+- `docs(spec): apply codex feedback` — iteration commit when findings are applied (Step 8.C).
+- `docs(spec): mark spec codex-reviewed` — footer commit (Step 8.C tail).
+
+Plan-side commits (Step 9), only when plan generation runs:
+
+- `docs(plan): <topic-slug>` — initial plan write (written by `superpowers:writing-plans` itself; verify the type, fix it post-hoc with `git commit --amend` if writing-plans uses a different prefix).
+- `docs(plan): apply codex feedback` — iteration commit (Step 9.C).
+- `docs(plan): mark plan codex-reviewed` — footer commit (Step 9.C tail).
+
+If your project's commitlint adds a custom `spec` or `plan` type, you may swap. The default is `docs(<scope>):`.
 
 ## What planner does NOT do (boundaries)
 
-- **Does not invoke `superpowers:writing-plans`.** The plan is the user's next step.
 - **Does not invoke `superpowers:brainstorming` as a skill.** It would chain to writing-plans. The methodology is followed inline.
+- **Does not auto-execute the plan.** When `/superpowers:writing-plans` is invoked at Step 9, planner explicitly instructs it to stop after writing the plan — the implementation phase is the user's next step.
 - **Does not retry codex hooks.** Codex unavailability is treated as a degraded end state.
-- **Does not edit the spec's frontmatter.** Existing specs in most projects don't have YAML frontmatter; the codex-reviewed marker is an HTML-comment footer at end-of-file (see `scripts/update-footer.sh`).
+- **Does not edit the spec's or plan's frontmatter.** Existing specs in most projects don't have YAML frontmatter; the codex-reviewed marker is an HTML-comment footer at end-of-file (see `scripts/update-footer.sh`).
 - **Does not auto-commit per section** in per-section mode. The spec is committed once at Step 7 — section-by-section commits would pollute git log without adding value (each section's diff is visible in the codex review files anyway).
 
 ## v2 paths
 
-- **Companion `/lifeline:review-doc <path>`** — pure post-hoc codex review on any markdown file. User invokes after `/superpowers:writing-plans` returns. Smallest implementation surface for plan-side review.
-- **`/lifeline:planner --plan-mode <spec-path>`** — symmetric: a self-contained writing-plans methodology + codex review for the implementation plan.
+- **Companion `/lifeline:review-doc <path>`** — pure post-hoc codex review on any markdown file. Useful for reviewing plans / specs that planner did not produce. Lower priority now that v1 has plan-side review built in.
+- **Inline `superpowers:writing-plans` methodology.** Currently planner invokes the skill with a stop-after-write instruction. If that instruction proves unreliable across superpowers versions, plan-side methodology can move inline (mirroring the brainstorming-inline pattern).
 
 ## Notes
 
@@ -277,3 +391,4 @@ This passes `@commitlint/config-conventional` (the standard config used by most 
 - **`LIFELINE_CODEX_TIMEOUT`** overrides the default 300s codex timeout. Tests use a small value to force the DEGRADED-on-timeout path.
 - **`LIFELINE_SKILL_DIR`** overrides skill-directory resolution. See `scripts/resolve-skill-dir.sh` for the lookup order.
 - **`LIFELINE_DEFERRALS_FILE`** overrides the deferrals-list path. Default: `${SCRATCH_DIR}/deferrals.md`.
+- **`LIFELINE_CODEX_MODEL`** pins the codex model via `--model <name>`. Empty / unset (the default) omits the flag, letting codex pick its auth-mode-appropriate default. Pinning only works on API-key auth — ChatGPT-account auth rejects explicit model selection.
