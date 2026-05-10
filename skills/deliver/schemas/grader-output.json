@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["complete", "missing_requirements", "evidence_checked"],
+  "properties": {
+    "complete": {
+      "type": "boolean",
+      "description": "True iff every objective requirement is covered by inspected evidence."
+    },
+    "missing_requirements": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "One entry per requirement that is missing, incomplete, or weakly verified. Empty when complete=true."
+    },
+    "evidence_checked": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "One entry per piece of real evidence inspected (file:lines, command output, test result, PR state)."
+    }
+  }
+}
