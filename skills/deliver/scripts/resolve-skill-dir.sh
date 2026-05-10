@@ -28,9 +28,11 @@ if [ -n "${LIFELINE_SKILL_DIR:-}" ] && is_valid "$LIFELINE_SKILL_DIR"; then
   exit 0
 fi
 
-# 2. Project-local.
+# 2. Project-local. Canonicalize to an absolute path so callers can use
+# the result regardless of their CWD (cases 3 and 4 below already return
+# absolute paths; this keeps the contract uniform).
 if is_valid "skills/deliver"; then
-  printf '%s\n' "skills/deliver"
+  printf '%s\n' "$(cd skills/deliver && pwd)"
   exit 0
 fi
 
@@ -44,7 +46,11 @@ fi
 # 4. Plugin cache (highest semver wins).
 CACHE_ROOT="${HOME}/.claude/plugins/cache/lifeline/lifeline"
 if [ -d "$CACHE_ROOT" ]; then
-  LATEST="$(ls -1 "$CACHE_ROOT" 2>/dev/null | sort -V | tail -1 || true)"
+  # Newest-installed wins. `sort -V` is GNU-only and missing on default
+  # macOS/BSD `sort`, so use mtime (`ls -1t`) instead — `/plugin install`
+  # writes a new directory each time, so mtime ordering matches install
+  # recency for the typical case (one or two cached versions).
+  LATEST="$(ls -1t "$CACHE_ROOT" 2>/dev/null | head -1 || true)"
   if [ -n "$LATEST" ] && is_valid "$CACHE_ROOT/$LATEST/skills/deliver"; then
     printf '%s\n' "$CACHE_ROOT/$LATEST/skills/deliver"
     exit 0

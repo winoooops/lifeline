@@ -15,18 +15,38 @@ SCRATCH=$(mktemp -d -t lifeline-deliver-XXXXXX)
 echo "SCRATCH=$SCRATCH"
 
 # Resolve the deliver skill dir. Order: env override, project-local
-# (lifeline dev checkout), git-root (lifeline subdir), plugin cache.
+# (only when the workspace is verifiably the lifeline checkout — the
+# .claude-plugin/plugin.json must declare name=lifeline), git-root
+# (same verification), plugin cache.
+#
+# Why the verification? When this skill runs as an installed plugin in
+# an arbitrary target repo, that repo could happen to contain a
+# `skills/deliver/schemas/grader-output.json` (a fork of lifeline, an
+# unrelated `skills/` convention, or — adversarially — a workspace
+# crafted to inject its own grader-prompt.md and bias the verdict).
+# Trusting the workspace blindly opens the audit to manipulation. The
+# plugin-manifest check ensures we only use a workspace copy when it's
+# the lifeline repo itself.
+_is_lifeline_repo() {
+  [ -f "$1/.claude-plugin/plugin.json" ] && \
+  grep -q '"name"[[:space:]]*:[[:space:]]*"lifeline"' "$1/.claude-plugin/plugin.json" 2>/dev/null
+}
+
 SKILL_DIR=""
 if [ -n "${LIFELINE_SKILL_DIR:-}" ] && [ -f "$LIFELINE_SKILL_DIR/schemas/grader-output.json" ]; then
   SKILL_DIR="$LIFELINE_SKILL_DIR"
-elif [ -f "./skills/deliver/schemas/grader-output.json" ]; then
+elif _is_lifeline_repo "." && [ -f "./skills/deliver/schemas/grader-output.json" ]; then
   SKILL_DIR="./skills/deliver"
-elif _gr=$(git rev-parse --show-toplevel 2>/dev/null) && [ -f "$_gr/skills/deliver/schemas/grader-output.json" ]; then
+elif _gr=$(git rev-parse --show-toplevel 2>/dev/null) \
+     && _is_lifeline_repo "$_gr" \
+     && [ -f "$_gr/skills/deliver/schemas/grader-output.json" ]; then
   SKILL_DIR="$_gr/skills/deliver"
 else
   _cache="$HOME/.claude/plugins/cache/lifeline/lifeline"
   if [ -d "$_cache" ]; then
-    _latest=$(ls -1 "$_cache" 2>/dev/null | sort -V | tail -1)
+    # Newest-installed wins. Use mtime ordering (portable) instead of
+    # `sort -V` which is GNU-only and missing on default macOS/BSD.
+    _latest=$(ls -1t "$_cache" 2>/dev/null | head -1)
     if [ -n "$_latest" ] && [ -f "$_cache/$_latest/skills/deliver/schemas/grader-output.json" ]; then
       SKILL_DIR="$_cache/$_latest/skills/deliver"
     fi
@@ -77,21 +97,87 @@ Optionally maintain a mental list of files you touched this iteration — it get
 Build the grader prompt and invoke `codex exec`:
 
 ```bash
+# Tracked-file diff. `git diff HEAD` omits untracked file CONTENTS — for
+# objectives that create new files, the grader otherwise sees only the
+# filename and can't verify what's inside. Augment the diff below with a
+# no-index synthetic diff for each untracked file.
 GIT_DIFF_HEAD=$(git diff HEAD 2>/dev/null || true)
 UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null || true)
 GIT_STATUS=$(git status --short 2>/dev/null || true)
 FILES_TOUCHED="<bulleted list you maintained mentally — or empty if you did not track. For out-of-repo objectives, include the full path here so the grader knows where to inspect>"
 
-# Render the grader template using bash parameter expansion. The
-# ${var//pattern/replacement} form does LITERAL substitution (not regex,
-# not & matched-text). Variables preserve embedded newlines so multi-line
-# diff content renders intact.
-PROMPT=$(cat "$GRADER_TEMPLATE")
-PROMPT="${PROMPT//\{\{ objective \}\}/$OBJECTIVE}"
-PROMPT="${PROMPT//\{\{ git_diff_head \}\}/$GIT_DIFF_HEAD}"
-PROMPT="${PROMPT//\{\{ untracked_files \}\}/$UNTRACKED}"
-PROMPT="${PROMPT//\{\{ git_status \}\}/$GIT_STATUS}"
-PROMPT="${PROMPT//\{\{ files_touched \}\}/$FILES_TOUCHED}"
+# UNTRACKED_INCLUDE — bash array of paths whose CONTENT (not just
+# filename) the grader needs to see. The agent populates this each
+# iteration based on the objective. Default is EMPTY: by default the
+# grader sees only filenames via {{ untracked_files }}, never bodies.
+#
+# Why opt-in (not auto-dump everything from `git ls-files --others`)?
+# Auto-dump leaks any unrelated untracked content that happens to sit in
+# the working tree (.env files, scratch dumps, generated build output,
+# secrets-in-progress) to the codex grader on every iteration. Worse,
+# large untracked files would also blow up the prompt and may exceed
+# codex's input limits.
+#
+# Set explicitly: UNTRACKED_INCLUDE=(src/foo.py /tmp/output.html)
+UNTRACKED_INCLUDE=("${UNTRACKED_INCLUDE[@]:-}")
+
+# Per-file size cap (64 KB) prevents a single large untracked file from
+# overwhelming the prompt even when the agent did opt to include it.
+_MAX_UNTRACKED_BYTES=65536
+for _f in "${UNTRACKED_INCLUDE[@]}"; do
+  [ -z "$_f" ] && continue
+  [ -f "$_f" ] || continue
+  _sz=$(wc -c < "$_f" 2>/dev/null || echo "$_MAX_UNTRACKED_BYTES")
+  if [ "$_sz" -gt "$_MAX_UNTRACKED_BYTES" ]; then
+    GIT_DIFF_HEAD+=$'\n'"--- skipped (>${_MAX_UNTRACKED_BYTES}B): $_f"$'\n'
+    continue
+  fi
+  GIT_DIFF_HEAD+=$'\n'
+  GIT_DIFF_HEAD+=$(git diff --no-index --no-color /dev/null -- "$_f" 2>/dev/null || true)
+done
+
+# Render the grader template via a single-pass Python substitution.
+#
+# An earlier version of this used five sequential `${PROMPT//pat/repl}`
+# bash expansions. That has a cross-injection bug: if $OBJECTIVE (or any
+# evidence value) contains the literal text of a later placeholder
+# — e.g. an objective of "Implement {{ git_diff_head }} parser" — that
+# text survives the first substitution and gets replaced with real
+# evidence in a subsequent pass, smuggling content from one slot into
+# another. Python's str.replace runs once per placeholder against the
+# ORIGINAL template buffer, so values introduced by one substitution are
+# never re-matched.
+PROMPT=""
+if PROMPT=$(OBJECTIVE="$OBJECTIVE" \
+            GIT_DIFF_HEAD="$GIT_DIFF_HEAD" \
+            UNTRACKED="$UNTRACKED" \
+            GIT_STATUS="$GIT_STATUS" \
+            FILES_TOUCHED="$FILES_TOUCHED" \
+            GRADER_TEMPLATE="$GRADER_TEMPLATE" \
+            python3 - 2>"$SCRATCH/grader-$ITER.render-stderr" <<'PY'
+import os, re
+template = open(os.environ['GRADER_TEMPLATE']).read()
+mapping = {
+    '{{ objective }}':       os.environ['OBJECTIVE'],
+    '{{ git_diff_head }}':   os.environ['GIT_DIFF_HEAD'],
+    '{{ untracked_files }}': os.environ['UNTRACKED'],
+    '{{ git_status }}':      os.environ['GIT_STATUS'],
+    '{{ files_touched }}':   os.environ['FILES_TOUCHED'],
+}
+pattern = re.compile('|'.join(re.escape(k) for k in mapping))
+print(pattern.sub(lambda m: mapping[m.group(0)], template), end='')
+PY
+); then : ; else PROMPT=""; fi
+
+# Fail fast on render failure (python3 missing, env-var size limit
+# exceeded, template missing, etc.). Without this guard, an empty PROMPT
+# would be sent to codex and the grader would judge against nothing —
+# silently losing the iteration's evidence and likely returning
+# complete=false (or worse, complete=true on a vacuous prompt).
+if [ -z "$PROMPT" ]; then
+  echo "WARN: grader prompt rendering failed (python3 unavailable, template missing, or env-var size exceeded). See $SCRATCH/grader-$ITER.render-stderr." >&2
+  CODEX_EXIT=99   # synthetic — routes through the grader-fallback branch below
+fi
 
 # GNU `timeout` is optional on some systems (BSD/macOS without coreutils,
 # minimal containers). Conditionally apply it; without timeout the existing
@@ -102,39 +188,64 @@ else
   TIMEOUT_PREFIX=""
 fi
 
-set +e
-$TIMEOUT_PREFIX codex exec \
-  --sandbox read-only \
-  --output-schema "$SCHEMA_PATH" \
-  --output-last-message "$SCRATCH/grader-$ITER.json" \
-  -- "$PROMPT" \
-  < /dev/null \
-  > "$SCRATCH/grader-$ITER.events.log" \
-  2> "$SCRATCH/grader-$ITER.stderr.log"
-CODEX_EXIT=$?
-set -e
+if [ "${CODEX_EXIT:-0}" -ne 99 ]; then
+  set +e
+  $TIMEOUT_PREFIX codex exec \
+    --sandbox read-only \
+    --output-schema "$SCHEMA_PATH" \
+    --output-last-message "$SCRATCH/grader-$ITER.json" \
+    -- "$PROMPT" \
+    < /dev/null \
+    > "$SCRATCH/grader-$ITER.events.log" \
+    2> "$SCRATCH/grader-$ITER.stderr.log"
+  CODEX_EXIT=$?
+  set -e
+fi
 ```
 
-Parse the verdict. Validate JSON parseability **before** asking jq for `.complete` — `set -e` would otherwise abort the whole bash step on malformed grader output, bypassing the fallback path:
+Parse the verdict. Validate JSON parseability **before** asking jq for `.complete` — `set -e` would otherwise abort the whole bash step on malformed grader output, bypassing the fallback path. **The block must `echo` the verdict** — it runs in the same Bash tool call as the codex invocation above so `$CODEX_EXIT` is in scope, but every parsed value (`VERDICT`, evidence, missing requirements) must be printed to stdout because Bash variables don't survive into the next Bash tool call. The agent reads the printed values out of stdout and carries them forward in its reasoning context:
 
 ```bash
-VERDICT_SOURCE="grader"  # remember how this iteration completed (or didn't)
-COMPLETE="false"
+# This block must run in the SAME Bash tool call as the codex exec above
+# (so $CODEX_EXIT and $SCRATCH/$ITER are still in scope) and must `echo`
+# every parsed value — Bash variables disappear when the tool call ends.
+
+VERDICT_SOURCE="grader"  # how this iteration completed (or didn't)
+VERDICT="incomplete"
 
 if [ "$CODEX_EXIT" -eq 0 ] && [ -s "$SCRATCH/grader-$ITER.json" ] \
-   && jq empty "$SCRATCH/grader-$ITER.json" 2>/dev/null; then
-  # Valid JSON — read the verdict; tolerate missing keys.
-  COMPLETE=$(jq -r '.complete // false' "$SCRATCH/grader-$ITER.json")
+   && jq -e '
+       type == "object"
+       and (.complete | type == "boolean")
+       and (.missing_requirements | type == "array")
+       and (.evidence_checked | type == "array")
+     ' "$SCRATCH/grader-$ITER.json" >/dev/null 2>&1; then
+  # JSON is valid AND matches the schema (object with the three expected
+  # fields of the right types). `jq empty` was too lenient — it accepts
+  # `true`, `[]`, `"hi"`, or `{"complete":"true"}` (string instead of
+  # bool), which would either error under set -e or pass through with the
+  # wrong verdict. Schema validation here routes those cases through the
+  # grader-fallback branch.
+  COMPLETE=$(jq -r '.complete' "$SCRATCH/grader-$ITER.json")
   if [ "$COMPLETE" = "true" ]; then
-    EVIDENCE=$(jq -r '.evidence_checked[]?' "$SCRATCH/grader-$ITER.json")
-    # → go to Step 3 (success), record VERDICT_SOURCE=grader
+    VERDICT="complete"
+    echo "VERDICT=complete"
+    echo "VERDICT_SOURCE=$VERDICT_SOURCE"
+    echo "EVIDENCE_CHECKED:"
+    jq -r '.evidence_checked[]? | "  - \(.)"' "$SCRATCH/grader-$ITER.json"
+    # → go to Step 3 (success)
   else
-    MISSING=$(jq -r '.missing_requirements[]?' "$SCRATCH/grader-$ITER.json")
-    # → log MISSING, continue loop with the next concrete action
+    echo "VERDICT=incomplete"
+    echo "VERDICT_SOURCE=$VERDICT_SOURCE"
+    echo "MISSING_REQUIREMENTS:"
+    jq -r '.missing_requirements[]? | "  - \(.)"' "$SCRATCH/grader-$ITER.json"
+    # → take the next concrete action next iteration
   fi
 else
-  echo "WARN: codex grader unusable (exit $CODEX_EXIT, file empty/malformed); falling back to in-context audit for this iteration only" >&2
   VERDICT_SOURCE="self-audit-fallback"
+  echo "VERDICT=grader_unusable (codex_exit=$CODEX_EXIT, file empty/malformed)" >&2
+  echo "VERDICT_SOURCE=$VERDICT_SOURCE"
+  echo "FALLBACK: apply continuation.md audit checklist to your last action this iteration"
   # → apply continuation.md audit checklist to your last action
   # → if audit returns complete, go to Step 3 (record VERDICT_SOURCE=self-audit-fallback)
   # → else continue loop

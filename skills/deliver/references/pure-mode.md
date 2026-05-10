@@ -6,14 +6,62 @@ Pure mode runs the loop entirely inside Claude — no external grader, no codex 
 
 > **Reminder — Bash state does not persist between tool calls.** Carry literal values (paths, timestamps) forward in your reasoning context and interpolate them as strings into every Bash call.
 
-## Step 1: Initialize scratch
+## Step 1: Initialize scratch + resolve skill dir
+
+Resolution is **inline** here (not via the resolver script) for the same reason `paired-mode.md` inlines it: when the skill runs as an installed plugin in a target repo, `$REPO_ROOT/skills/deliver/scripts/resolve-skill-dir.sh` does not exist — the skill files live in the plugin cache. Without `$SKILL_DIR`, the per-iteration `Read` of `references/continuation.md` would silently miss the file and pure mode would loop without the audit checklist.
 
 ```bash
 SCRATCH=$(mktemp -d -t lifeline-deliver-XXXXXX)
 echo "SCRATCH=$SCRATCH"
+
+# Resolve the deliver skill dir. Order: env override, project-local
+# (only when the workspace is verifiably the lifeline checkout — the
+# .claude-plugin/plugin.json must declare name=lifeline), git-root
+# (same verification), plugin cache.
+#
+# Why the verification? When this skill runs as an installed plugin in
+# an arbitrary target repo, that repo could happen to contain a
+# `skills/deliver/references/continuation.md` (a fork of lifeline, an
+# unrelated `skills/` convention, or a workspace crafted to substitute
+# its own audit checklist). The plugin-manifest check ensures we only
+# use a workspace copy when it's the lifeline repo itself.
+_is_lifeline_repo() {
+  [ -f "$1/.claude-plugin/plugin.json" ] && \
+  grep -q '"name"[[:space:]]*:[[:space:]]*"lifeline"' "$1/.claude-plugin/plugin.json" 2>/dev/null
+}
+
+SKILL_DIR=""
+if [ -n "${LIFELINE_SKILL_DIR:-}" ] && [ -f "$LIFELINE_SKILL_DIR/references/continuation.md" ]; then
+  SKILL_DIR="$LIFELINE_SKILL_DIR"
+elif _is_lifeline_repo "." && [ -f "./skills/deliver/references/continuation.md" ]; then
+  SKILL_DIR="./skills/deliver"
+elif _gr=$(git rev-parse --show-toplevel 2>/dev/null) \
+     && _is_lifeline_repo "$_gr" \
+     && [ -f "$_gr/skills/deliver/references/continuation.md" ]; then
+  SKILL_DIR="$_gr/skills/deliver"
+else
+  _cache="$HOME/.claude/plugins/cache/lifeline/lifeline"
+  if [ -d "$_cache" ]; then
+    # Newest-installed wins. Use mtime ordering (portable) instead of
+    # `sort -V` which is GNU-only and missing on default macOS/BSD.
+    _latest=$(ls -1t "$_cache" 2>/dev/null | head -1)
+    if [ -n "$_latest" ] && [ -f "$_cache/$_latest/skills/deliver/references/continuation.md" ]; then
+      SKILL_DIR="$_cache/$_latest/skills/deliver"
+    fi
+  fi
+fi
+
+if [ -z "$SKILL_DIR" ]; then
+  echo "ERROR: could not resolve skills/deliver. Set LIFELINE_SKILL_DIR or install the plugin via /plugin install lifeline." >&2
+  exit 1
+fi
+
+echo "SKILL_DIR=$SKILL_DIR"
 ```
 
-Remember the literal `$SCRATCH` path. Pure mode doesn't need codex/schema/grader-template, but `$SCRATCH` is still useful for any per-iteration notes you want to save (and it gets cleaned up on success or preserved on `budget_limited`).
+Capture both `SCRATCH` and `SKILL_DIR` from this call's stdout and use them as literal paths in every subsequent Bash call (including the per-iteration `Read` calls for `continuation.md` and `budget_limit.md`). `$SCRATCH` cleans up on success and is preserved on `budget_limited`; `$SKILL_DIR` is read-only — pure mode never writes inside the skill dir.
+
+If `$SKILL_DIR` is empty, **report a startup error and stop**. Continuing without it would mean every iteration silently fails to load the audit checklist.
 
 ## Step 2: The loop
 
@@ -21,7 +69,7 @@ While `ITER < CAP`:
 
 ### 2a. Read continuation template
 
-Read `references/continuation.md` (resolve relative to your skill dir — same dir as `SKILL.md`). Substitute placeholders in your reasoning context:
+Read `$SKILL_DIR/references/continuation.md` (the literal path you captured in Step 1). Substitute placeholders in your reasoning context:
 
 - `{{ objective }}` → `$OBJECTIVE`
 - `{{ iter_used }}` → current `$ITER`
@@ -85,7 +133,7 @@ rm -rf "$SCRATCH"
 
 ### Budget-limited path
 
-When `ITER == CAP` without a complete verdict, read `references/budget_limit.md`, substitute the same placeholders as 2a, and use it for one wrap-up turn. Then emit:
+When `ITER == CAP` without a complete verdict, read `$SKILL_DIR/references/budget_limit.md` (the literal path you captured in Step 1), substitute the same placeholders as 2a, and use it for one wrap-up turn. Then emit:
 
 ```
 Deliveries halted at iteration cap (<MINS>m <SECS>s elapsed).
