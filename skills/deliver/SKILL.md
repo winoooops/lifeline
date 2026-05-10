@@ -6,14 +6,20 @@ tools: Read, Write, Edit, Bash, Grep, Glob, AskUserQuestion
 
 # /lifeline:deliver — goal-driven in-session loop
 
-Take a free-form objective and iterate Claude actions until a completion audit passes. Two modes share one loop:
+Take a free-form objective and iterate Claude actions until a completion audit passes. The loop runs entirely within one Claude assistant turn — no external scheduling, no persistent state.
 
-- **Pure** — `/lifeline:deliver <objective>` — Claude self-audits each iteration using `references/continuation.md`.
-- **Paired** — `/lifeline:deliver pair [N] <objective>` — completion check delegated to `codex exec` as an independent grader (no Claude conversation history visible to grader).
+## Adapted from openai/codex
 
-Adapted from OpenAI Codex's `/goal` command. See `NOTICE` for attribution.
+The `references/continuation.md` and `references/budget_limit.md` files are derivative works of templates from [openai/codex](https://github.com/openai/codex) under the Apache License, Version 2.0. See repo `NOTICE` for the full attribution. The four prompt techniques powering the audit (untrusted-input wrapping, concrete checklist, uncertainty-as-not-done, stop ≠ complete) come straight from the Codex `/goal` design.
 
-## Step 0: Parse `$ARGUMENTS`
+## Two modes
+
+| Mode | Invocation | When to use |
+|---|---|---|
+| **Pure**   | `/lifeline:deliver <objective>` | Lightweight, no external dependencies. Claude self-audits each iteration using `references/continuation.md`. |
+| **Paired** | `/lifeline:deliver pair [N] <objective>` | Higher confidence on completion. Each "is it done?" check is delegated to `codex exec` as an independent grader (no Claude conversation history visible). Mirrors Anthropic's Outcomes pattern — independent grader → no confirmation bias. |
+
+## Step 0: Parse `$ARGUMENTS` (decide the mode)
 
 Strip leading whitespace. Then:
 
@@ -28,171 +34,27 @@ Strip leading whitespace. Then:
 
 Initialize `ITER = 0`.
 
-## Step 1: Initialize scratch + (paired only) resolve schema
+## Step 1: Start the delivery timer
 
-> **Important — Bash state does not persist between tool calls.** Each
-> Bash tool invocation runs in a fresh shell. The shell variables you
-> set in Step 1 (e.g. `$SCRATCH`, `$SKILL_DIR`, `$SCHEMA_PATH`,
-> `$GRADER_TEMPLATE`) **will not be visible** in subsequent Bash calls
-> in Step 2. The pattern: read the literal values from this Bash call's
-> output, remember them in your reasoning context, and **interpolate
-> them as literal strings** into every subsequent Bash invocation.
-
-Run via the Bash tool:
+> **Bash state does not persist between tool calls.** Each Bash tool invocation runs in a fresh shell, so any shell variable you set is gone by the next call. The pattern: capture literal values from this call's stdout and interpolate them as literals into every subsequent Bash call. This applies here and in every Bash call in the mode-specific files.
 
 ```bash
-SCRATCH=$(mktemp -d -t lifeline-deliver-XXXXXX)
-echo "SCRATCH=$SCRATCH"
+START_TS=$(date +%s)
+echo "START_TS=$START_TS"
 ```
 
-Remember the literal `$SCRATCH` path for the rest of the loop.
+Remember the literal `$START_TS` value — Step 3 (in the mode file) uses it to compute total elapsed time for the final "Deliveries done" report.
 
-**Paired mode only:** resolve the skill dir and confirm the schema exists. If resolution fails or the schema is missing, stop immediately — silent fallback to pure mode is the bug we are guarding against.
+## Step 2: Dispatch to the mode-specific flow
 
-```bash
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-SKILL_DIR=$("$REPO_ROOT/skills/deliver/scripts/resolve-skill-dir.sh") || {
-  echo "ERROR: could not resolve skills/deliver. Set LIFELINE_SKILL_DIR or install the plugin via /plugin install lifeline." >&2
-  exit 1
-}
-SCHEMA_PATH="$SKILL_DIR/schemas/grader-output.json"
-GRADER_TEMPLATE="$SKILL_DIR/references/grader-prompt.md"
-[ -f "$SCHEMA_PATH" ] || { echo "ERROR: schema not found at $SCHEMA_PATH" >&2; exit 1; }
-echo "SKILL_DIR=$SKILL_DIR"
-echo "SCHEMA_PATH=$SCHEMA_PATH"
-echo "GRADER_TEMPLATE=$GRADER_TEMPLATE"
-```
+Based on `$MODE` from Step 0, read **one** of the following and follow its instructions end-to-end. The mode file owns scratch initialization, the iteration loop, the final report, and mode-specific error handling.
 
-Capture all four values (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE`) from this call's stdout and use them as literal paths in every subsequent Bash call this loop makes.
+| `$MODE` | Read this file |
+|---------|----------------|
+| `pure`  | `references/pure-mode.md` |
+| `paired`| `references/paired-mode.md` |
 
-If the resolver exits non-zero or the schema is missing, **report this as a startup error and stop**. Do not enter the loop.
-
-## Step 2: The loop
-
-While `ITER < CAP`:
-
-### 2a. Read continuation template
-
-Read `$SKILL_DIR/references/continuation.md` (pure mode: just read from `skills/deliver/references/continuation.md`). Substitute placeholders in your reasoning context:
-
-- `{{ objective }}` → `$OBJECTIVE`
-- `{{ iter_used }}` → current `$ITER`
-- `{{ iter_budget }}` → `$CAP`
-- `{{ iter_remaining }}` → `$((CAP - ITER))`
-
-The continuation prompt is the audit checklist you must apply this iteration. Keep it in your reasoning context.
-
-### 2b. Take the next concrete action
-
-Use `Edit` / `Write` / `Bash` / `Read` / etc. against the objective. **One action per iteration.** Do not batch multiple unrelated changes.
-
-### 2c. Audit
-
-**Pure mode:** Apply the audit checklist from continuation.md (in your reasoning context) against the action you just took. If the audit returns "complete," go to Step 3 (success).
-
-**Paired mode:** Build the grader prompt and invoke `codex exec`:
-
-```bash
-GIT_DIFF_HEAD=$(git diff HEAD 2>/dev/null || true)
-UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null || true)
-GIT_STATUS=$(git status --short 2>/dev/null || true)
-FILES_TOUCHED="<bulleted list you maintained mentally — or empty if you did not track>"
-
-# Render the grader template using bash parameter expansion. The
-# ${var//pattern/replacement} form does LITERAL substitution (not regex,
-# not & matched-text). Variables preserve embedded newlines, so
-# multi-line diff content renders intact.
-PROMPT=$(cat "$GRADER_TEMPLATE")
-PROMPT="${PROMPT//\{\{ objective \}\}/$OBJECTIVE}"
-PROMPT="${PROMPT//\{\{ git_diff_head \}\}/$GIT_DIFF_HEAD}"
-PROMPT="${PROMPT//\{\{ untracked_files \}\}/$UNTRACKED}"
-PROMPT="${PROMPT//\{\{ git_status \}\}/$GIT_STATUS}"
-PROMPT="${PROMPT//\{\{ files_touched \}\}/$FILES_TOUCHED}"
-
-set +e
-timeout 300 codex exec \
-  --sandbox read-only \
-  --output-schema "$SCHEMA_PATH" \
-  --output-last-message "$SCRATCH/grader-$ITER.json" \
-  -- "$PROMPT" \
-  < /dev/null \
-  > "$SCRATCH/grader-$ITER.events.log" \
-  2> "$SCRATCH/grader-$ITER.stderr.log"
-CODEX_EXIT=$?
-set -e
-```
-
-Parse the verdict:
-
-```bash
-if [ "$CODEX_EXIT" -eq 0 ] && [ -s "$SCRATCH/grader-$ITER.json" ]; then
-  COMPLETE=$(jq -r '.complete' "$SCRATCH/grader-$ITER.json")
-  if [ "$COMPLETE" = "true" ]; then
-    EVIDENCE=$(jq -r '.evidence_checked[]' "$SCRATCH/grader-$ITER.json")
-    # → go to Step 3 (success)
-  else
-    MISSING=$(jq -r '.missing_requirements[]' "$SCRATCH/grader-$ITER.json")
-    # → log MISSING, continue loop
-  fi
-else
-  echo "WARN: codex grader failed (exit $CODEX_EXIT); falling back to in-context audit for this iteration only" >&2
-  # → apply continuation.md audit checklist to your last action
-  # → if audit returns complete, go to Step 3; else continue loop
-  # → mode does NOT switch globally; next iteration retries codex
-fi
-```
-
-### 2d. Increment
-
-`ITER = ITER + 1`. If `ITER < CAP`, loop back to 2a.
-
-## Step 3: Final report
-
-### Success path (`status: success`)
-
-When the audit/grader returns complete, stop emitting tool calls and emit this report:
-
-```
-status: success
-iterations: <ITER>
-evidence_checked:
-  - <each entry from grader output (paired) or your audit notes (pure)>
-```
-
-Then clean up the scratch dir:
-
-```bash
-rm -rf "$SCRATCH"
-```
-
-### Budget-limited path (`status: budget_limited`)
-
-When `ITER == CAP`, read `$SKILL_DIR/references/budget_limit.md`, substitute placeholders, and use it for one wrap-up turn. Then emit:
-
-```
-status: budget_limited
-iterations: <CAP>
-missing_requirements:
-  - <each entry from last grader output or audit>
-scratch_dir: <SCRATCH path>
-note: scratch dir preserved for postmortem inspection
-```
-
-**Do not delete `$SCRATCH`** on `budget_limited` — the user should be able to inspect the raw grader verdicts.
-
-## Error handling
-
-| Condition | Behavior |
-|---|---|
-| Empty objective | `AskUserQuestion` to collect one before Step 1. |
-| Schema file resolution fails (paired mode) | Hard error at Step 1; do not enter loop. |
-| Codex unavailable / not authed (paired mode) | First grader call fails; surface stderr in the warning and route through grader-fallback (apply in-context audit for that iteration only). |
-| Grader subprocess fails (timeout, non-zero exit, malformed JSON, empty result file) | Same grader-fallback. Mode does NOT switch globally. |
-| `git diff HEAD` errors (no commits yet) | Pass empty diff; grader still has objective + untracked + status. |
-
-## Out-of-repo objectives
-
-If the objective concerns paths outside the git repo (e.g., `/tmp/...`), `git diff HEAD` and `git ls-files` will be empty. The objective string must name the relevant paths so the grader can `cat`/`ls` them under `--sandbox read-only`. The grader prompt explicitly handles this case.
+Each mode file is self-contained — do not flip back to this SKILL.md once you've started the mode flow. Both end with a final report that opens with `Deliveries done in Xm Ys` (success) or `Deliveries halted at iteration cap (Xm Ys elapsed)` (budget_limited), computed from `$START_TS`.
 
 ## Smoke tests
 
