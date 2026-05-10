@@ -6,22 +6,42 @@ Paired mode delegates each iteration's "is the objective complete?" decision to 
 
 > **Reminder — Bash state does not persist between tool calls.** Carry literal values (paths, timestamps) forward in your reasoning context and interpolate them as strings into every Bash call.
 
-## Step 1: Initialize scratch + resolve schema
+## Step 1: Initialize scratch + resolve skill dir
 
-Run via the Bash tool:
+Run via the Bash tool. Resolution is **inline** here (not via the resolver script) because when the skill runs as an installed plugin in a target repo, `$REPO_ROOT/skills/deliver/scripts/resolve-skill-dir.sh` does not exist — the skill files live in the plugin cache, not in the user's repo. The resolver-script call has a chicken-and-egg problem; inlining the same lookup avoids it.
 
 ```bash
 SCRATCH=$(mktemp -d -t lifeline-deliver-XXXXXX)
 echo "SCRATCH=$SCRATCH"
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-SKILL_DIR=$("$REPO_ROOT/skills/deliver/scripts/resolve-skill-dir.sh") || {
+# Resolve the deliver skill dir. Order: env override, project-local
+# (lifeline dev checkout), git-root (lifeline subdir), plugin cache.
+SKILL_DIR=""
+if [ -n "${LIFELINE_SKILL_DIR:-}" ] && [ -f "$LIFELINE_SKILL_DIR/schemas/grader-output.json" ]; then
+  SKILL_DIR="$LIFELINE_SKILL_DIR"
+elif [ -f "./skills/deliver/schemas/grader-output.json" ]; then
+  SKILL_DIR="./skills/deliver"
+elif _gr=$(git rev-parse --show-toplevel 2>/dev/null) && [ -f "$_gr/skills/deliver/schemas/grader-output.json" ]; then
+  SKILL_DIR="$_gr/skills/deliver"
+else
+  _cache="$HOME/.claude/plugins/cache/lifeline/lifeline"
+  if [ -d "$_cache" ]; then
+    _latest=$(ls -1 "$_cache" 2>/dev/null | sort -V | tail -1)
+    if [ -n "$_latest" ] && [ -f "$_cache/$_latest/skills/deliver/schemas/grader-output.json" ]; then
+      SKILL_DIR="$_cache/$_latest/skills/deliver"
+    fi
+  fi
+fi
+
+if [ -z "$SKILL_DIR" ]; then
   echo "ERROR: could not resolve skills/deliver. Set LIFELINE_SKILL_DIR or install the plugin via /plugin install lifeline." >&2
   exit 1
-}
+fi
+
 SCHEMA_PATH="$SKILL_DIR/schemas/grader-output.json"
 GRADER_TEMPLATE="$SKILL_DIR/references/grader-prompt.md"
-[ -f "$SCHEMA_PATH" ] || { echo "ERROR: schema not found at $SCHEMA_PATH" >&2; exit 1; }
+[ -f "$GRADER_TEMPLATE" ] || { echo "ERROR: grader template not found at $GRADER_TEMPLATE" >&2; exit 1; }
+
 echo "SKILL_DIR=$SKILL_DIR"
 echo "SCHEMA_PATH=$SCHEMA_PATH"
 echo "GRADER_TEMPLATE=$GRADER_TEMPLATE"
@@ -29,7 +49,7 @@ echo "GRADER_TEMPLATE=$GRADER_TEMPLATE"
 
 Capture all four values (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE`) from this call's stdout and use them as literal paths in every subsequent Bash call.
 
-If the resolver exits non-zero or the schema is missing, **report a startup error and stop**. Do not enter the loop. Silent fallback to pure mode is the bug we are explicitly guarding against.
+If `$SKILL_DIR` ends up empty or the grader template is missing, **report a startup error and stop**. Do not enter the loop. Silent fallback to pure mode is the bug we are explicitly guarding against.
 
 ## Step 2: The loop
 
@@ -73,8 +93,17 @@ PROMPT="${PROMPT//\{\{ untracked_files \}\}/$UNTRACKED}"
 PROMPT="${PROMPT//\{\{ git_status \}\}/$GIT_STATUS}"
 PROMPT="${PROMPT//\{\{ files_touched \}\}/$FILES_TOUCHED}"
 
+# GNU `timeout` is optional on some systems (BSD/macOS without coreutils,
+# minimal containers). Conditionally apply it; without timeout the existing
+# Codex CLI behavior still applies — codex itself exits eventually.
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_PREFIX="timeout 300"
+else
+  TIMEOUT_PREFIX=""
+fi
+
 set +e
-timeout 300 codex exec \
+$TIMEOUT_PREFIX codex exec \
   --sandbox read-only \
   --output-schema "$SCHEMA_PATH" \
   --output-last-message "$SCRATCH/grader-$ITER.json" \
@@ -86,25 +115,34 @@ CODEX_EXIT=$?
 set -e
 ```
 
-Parse the verdict:
+Parse the verdict. Validate JSON parseability **before** asking jq for `.complete` — `set -e` would otherwise abort the whole bash step on malformed grader output, bypassing the fallback path:
 
 ```bash
-if [ "$CODEX_EXIT" -eq 0 ] && [ -s "$SCRATCH/grader-$ITER.json" ]; then
-  COMPLETE=$(jq -r '.complete' "$SCRATCH/grader-$ITER.json")
+VERDICT_SOURCE="grader"  # remember how this iteration completed (or didn't)
+COMPLETE="false"
+
+if [ "$CODEX_EXIT" -eq 0 ] && [ -s "$SCRATCH/grader-$ITER.json" ] \
+   && jq empty "$SCRATCH/grader-$ITER.json" 2>/dev/null; then
+  # Valid JSON — read the verdict; tolerate missing keys.
+  COMPLETE=$(jq -r '.complete // false' "$SCRATCH/grader-$ITER.json")
   if [ "$COMPLETE" = "true" ]; then
-    EVIDENCE=$(jq -r '.evidence_checked[]' "$SCRATCH/grader-$ITER.json")
-    # → go to Step 3 (success)
+    EVIDENCE=$(jq -r '.evidence_checked[]?' "$SCRATCH/grader-$ITER.json")
+    # → go to Step 3 (success), record VERDICT_SOURCE=grader
   else
-    MISSING=$(jq -r '.missing_requirements[]' "$SCRATCH/grader-$ITER.json")
+    MISSING=$(jq -r '.missing_requirements[]?' "$SCRATCH/grader-$ITER.json")
     # → log MISSING, continue loop with the next concrete action
   fi
 else
-  echo "WARN: codex grader failed (exit $CODEX_EXIT); falling back to in-context audit for this iteration only" >&2
+  echo "WARN: codex grader unusable (exit $CODEX_EXIT, file empty/malformed); falling back to in-context audit for this iteration only" >&2
+  VERDICT_SOURCE="self-audit-fallback"
   # → apply continuation.md audit checklist to your last action
-  # → if audit returns complete, go to Step 3; else continue loop
+  # → if audit returns complete, go to Step 3 (record VERDICT_SOURCE=self-audit-fallback)
+  # → else continue loop
   # → mode does NOT switch globally; next iteration retries codex
 fi
 ```
+
+Carry `VERDICT_SOURCE` ("grader" or "self-audit-fallback") forward to Step 3 — the success report needs it to decide where evidence comes from.
 
 ### 2d. Increment
 
@@ -126,17 +164,33 @@ Capture the literal `${MINS}m ${SECS}s` string for the report.
 
 ### Success path
 
-When the grader (or fallback self-audit) returns complete, stop emitting tool calls and emit:
+When the grader (or fallback self-audit) returns complete, stop emitting tool calls and emit one of the two reports below — pick the variant matching `$VERDICT_SOURCE` from the iteration that completed.
+
+**If `VERDICT_SOURCE = grader`** (codex grader returned `complete: true`):
 
 ```
 Deliveries done in <MINS>m <SECS>s.
 status: success
 mode: paired
+verdict_source: codex grader
 iterations: <ITER + 1>
 elapsed: <MINS>m <SECS>s
-grader_verdict: complete
 evidence_checked:
   - <each entry from the final grader-N.json (.evidence_checked[])>
+```
+
+**If `VERDICT_SOURCE = self-audit-fallback`** (codex was unavailable / timed out / returned malformed JSON, and the in-context audit declared completion):
+
+```
+Deliveries done in <MINS>m <SECS>s.
+status: success
+mode: paired
+verdict_source: in-context fallback (codex was unavailable for this iteration)
+iterations: <ITER + 1>
+elapsed: <MINS>m <SECS>s
+evidence_checked:
+  - <each item from your in-context audit notes for the completing iteration>
+note: paired mode degraded to self-audit for the final iteration — re-run when codex is reachable for an independent verdict.
 ```
 
 Then clean up the scratch dir:
@@ -156,12 +210,13 @@ mode: paired
 iterations: <CAP>
 elapsed: <MINS>m <SECS>s
 missing_requirements:
-  - <each entry from the last grader-N.json (.missing_requirements[])>
+  - <pull from the last iteration's grader-N.json (.missing_requirements[]) if VERDICT_SOURCE=grader,
+     OR from your in-context audit notes for that iteration if VERDICT_SOURCE=self-audit-fallback>
 scratch_dir: <SCRATCH path>
-note: scratch dir preserved for postmortem inspection (raw codex verdicts in grader-*.json)
+note: scratch dir preserved for postmortem inspection. Raw codex verdicts (when present) are in grader-*.json.
 ```
 
-**Do not delete `$SCRATCH`** on `budget_limited` — the user inspects raw grader verdicts here.
+**Do not delete `$SCRATCH`** on `budget_limited` — the user inspects raw grader verdicts (and event/stderr logs from any failed grader runs) here.
 
 ## Error handling
 
