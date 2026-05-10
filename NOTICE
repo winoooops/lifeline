@@ -1,0 +1,10 @@
+This product includes software developed at OpenAI, Inc.
+(https://github.com/openai/codex).
+
+The skills/deliver/references/continuation.md and
+skills/deliver/references/budget_limit.md files are derivative works
+of templates from openai/codex (codex-rs/core/templates/goals/),
+licensed under the Apache License, Version 2.0.
+You may obtain a copy of the License at:
+
+  https://www.apache.org/licenses/LICENSE-2.0
