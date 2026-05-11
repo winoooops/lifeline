@@ -138,9 +138,7 @@ missing_requirements:
   - <each item from the wrap-up audit>
 ```
 
-(Pure mode doesn't write per-iteration artifacts to `$SCRATCH` — that's a paired-mode-only directory used for grader JSON, event logs, and render inputs. Don't reference `$SCRATCH` in the pure-mode budget_limited report; it would always be empty.)
-
-**Do not delete `$SCRATCH`** on `budget_limited`.
+(Pure mode doesn't write per-iteration artifacts to `$SCRATCH` — that's a paired-mode-only directory used for grader JSON, event logs, and render inputs. Don't reference `$SCRATCH` in the pure-mode budget_limited report; it would always be empty. Pure mode also doesn't *create* a scratch dir, so there is nothing to clean up or preserve on either exit path.)
 
 ## Error handling
 

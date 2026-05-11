@@ -258,16 +258,22 @@ else
   CODEX_EXIT=-1
 fi
 echo "CODEX_EXIT=$CODEX_EXIT"        # echo for the verdict-parsing block
-echo "RENDER_FAILED=$RENDER_FAILED"  # echo so the verdict block can distinguish
-                                     # render-fail from codex-fail
-```
 
-Parse the verdict. Validate JSON parseability **before** asking jq for `.complete` — `set -e` would otherwise abort the whole bash step on malformed grader output, bypassing the fallback path. **The block must `echo` the verdict** — it runs in the same Bash tool call as the codex invocation above so `$CODEX_EXIT` is in scope, but every parsed value (`VERDICT`, evidence, missing requirements) must be printed to stdout because Bash variables don't survive into the next Bash tool call. The agent reads the printed values out of stdout and carries them forward in its reasoning context:
-
-```bash
-# This block must run in the SAME Bash tool call as the codex exec above
-# (so $CODEX_EXIT and $SCRATCH/$ITER are still in scope) and must `echo`
-# every parsed value — Bash variables disappear when the tool call ends.
+# ──────────────────────────────────────────────────────────────────────
+# Verdict parsing — MUST run in the same Bash tool call as the codex
+# exec above so that CODEX_EXIT, RENDER_FAILED, SCRATCH, and ITER are
+# all still in scope. The two halves used to be in separate fenced
+# blocks with prose between them; LLMs read fence boundaries as
+# tool-call boundaries and would split the call, leaving every
+# variable empty in the second half and silently routing every
+# iteration to the grader-fallback path. They are now ONE fence with
+# a comment-bar separator. Validate JSON parseability before reading
+# .complete — `set -e` would otherwise abort the bash step on
+# malformed grader output, bypassing the fallback. Every parsed value
+# is `echo`'d because Bash variables don't survive into the next
+# Bash tool call; the agent reads the printed values out of stdout
+# and carries them forward in its reasoning context.
+# ──────────────────────────────────────────────────────────────────────
 
 VERDICT_SOURCE="grader"  # how this iteration completed (or didn't)
 VERDICT="incomplete"
