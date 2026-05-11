@@ -73,18 +73,34 @@ SCHEMA_PATH="$SKILL_DIR/schemas/grader-output.json"
 GRADER_TEMPLATE="$SKILL_DIR/references/grader-prompt.md"
 [ -f "$GRADER_TEMPLATE" ] || { echo "ERROR: grader template not found at $GRADER_TEMPLATE" >&2; exit 1; }
 
+# Tool preflight: jq is required for the verdict-validation gate. If
+# missing, every iteration's grader output goes through the schema
+# check, which silently exits non-zero (`command not found`) and the
+# WARN message would lie ("file empty/malformed" — but codex actually
+# wrote a valid file; jq just couldn't read it). Catch it loud at
+# startup instead.
+command -v jq >/dev/null 2>&1 || {
+  echo "ERROR: jq is required for grader-verdict validation. Install jq and re-run (apt/brew install jq)." >&2
+  exit 1
+}
+
 # All validations passed — now safe to allocate the scratch directory.
 SCRATCH=$(mktemp -d -t lifeline-deliver-XXXXXX)
+ITER=0   # explicit initial value, echoed below so the first iteration
+         # of the loop has a stdout-echoed value to rehydrate from
+         # alongside the other captures (Step 2d echoes the incremented
+         # ITER for subsequent iterations).
 
 echo "SCRATCH=$SCRATCH"
 echo "SKILL_DIR=$SKILL_DIR"
 echo "SCHEMA_PATH=$SCHEMA_PATH"
 echo "GRADER_TEMPLATE=$GRADER_TEMPLATE"
+echo "ITER=$ITER"
 ```
 
-Capture all four values (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE`) from this call's stdout and use them as literal paths in every subsequent Bash call.
+Capture all five values (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE`, `ITER`) from this call's stdout and use them as literal paths/integers in every subsequent Bash call.
 
-If `$SKILL_DIR` ends up empty or the grader template is missing, **report a startup error and stop**. Do not enter the loop. Silent fallback to pure mode is the bug we are explicitly guarding against.
+If `$SKILL_DIR` ends up empty, the grader template is missing, or jq isn't on PATH, **report a startup error and stop**. Do not enter the loop. Silent fallback to pure mode is the bug we are explicitly guarding against.
 
 ## Step 2: The loop
 

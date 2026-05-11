@@ -31,13 +31,16 @@
 set -euo pipefail
 
 # ────────────────────────────────────────────────────────────────────
-# AUTHORITATIVE VERSION of the deliver-skill-dir lookup.
-# Mirrored inline (without the LIFELINE_SKILL_DIR test-only subshell
-# spawn cost) in skills/deliver/references/pure-mode.md and
-# paired-mode.md, which can't depend on this script being present at
-# runtime (target repos with the installed plugin don't have it). When
-# changing the sentinel filename, ordering, or .DS_Store filter,
-# update all THREE copies; there is no CI drift guard yet.
+# DEVELOPER / TEST HELPER — NOT called at runtime by the deliver skill.
+# At runtime, both pure-mode.md and paired-mode.md inline equivalent
+# logic, because target repos with the installed plugin don't carry
+# this script. The inline copies are the OPERATIVE versions; this
+# script is for manual debugging from a lifeline checkout.
+#
+# When changing the sentinel filename, ordering, or .DS_Store filter,
+# update ALL THREE copies (pure-mode.md, paired-mode.md, and this
+# script). There is no CI drift guard yet — runtime correctness
+# depends on the mode files, not this script.
 # ────────────────────────────────────────────────────────────────────
 
 is_valid() {
