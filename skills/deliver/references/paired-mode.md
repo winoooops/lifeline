@@ -233,11 +233,12 @@ _MAX_GIT_DIFF_HEAD_BYTES=524288
 UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null || true)
 GIT_STATUS=$(git status --short 2>/dev/null || true)
 FILES_TOUCHED=""   # leave empty by default; if your objective is out-of-repo
-                   # (paths the grader needs to cat/ls — e.g. /tmp/foo.html),
+                   # (paths the grader needs to cat/ls — e.g. /tmp/lifeline-out.html),
                    # set this to a newline-separated list of those paths so
-                   # the grader knows where to inspect. The grader treats
-                   # empty `files_touched` as "no orientation hint, fall
-                   # back to git evidence."
+                   # the grader knows where to inspect. Only repo-relative,
+                   # repo-absolute, /tmp, and /var/tmp paths survive the
+                   # validation below. The grader treats empty `files_touched`
+                   # as "no orientation hint, fall back to git evidence."
 
 # UNTRACKED_INCLUDE — bash array of paths whose CONTENT (not just
 # filename) the grader needs to see. The agent populates this each
@@ -301,6 +302,27 @@ if [ "$_git_diff_head_bytes" -gt "$_MAX_GIT_DIFF_HEAD_BYTES" ]; then
   rm -f "$_truncated_diff_file" "$_truncated_diff_lines_file"
 fi
 
+_validated_files_touched=""
+while IFS= read -r _path || [ -n "$_path" ]; do
+  [ -z "$_path" ] && continue
+  case "$_path" in
+    *"/../"*|../*|*/..|..|~*|/etc/*|/proc/*|/sys/*|/dev/*|/run/secrets/*|*.env*|*.pem|*.key|.ssh/*|*/.ssh/*|.aws/*|*/.aws/*|*id_rsa*|*id_ed25519*)
+      echo "WARN: skipping unsafe FILES_TOUCHED path: $_path" >&2
+      continue
+      ;;
+  esac
+  case "$_path" in
+    "$PWD"/*|./*|[!/]*) ;;
+    /tmp/*|/var/tmp/*) ;;
+    *)
+      echo "WARN: skipping FILES_TOUCHED path outside repo/tmp allowlist: $_path" >&2
+      continue
+      ;;
+  esac
+  _validated_files_touched+="${_path}"$'\n'
+done <<< "$FILES_TOUCHED"
+FILES_TOUCHED="$_validated_files_touched"
+
 # Render the grader template via a single-pass Python substitution.
 #
 # An earlier version of this used five sequential `${PROMPT//pat/repl}`
@@ -337,10 +359,10 @@ if grep -qF '<paste the exact OBJECTIVE from SKILL.md Step 0>' "$RENDER_DIR/obje
   echo "ERROR: objective placeholder was not replaced before running paired mode Step 2c." >&2
   exit 1
 fi
-printf '%s' "$GIT_DIFF_HEAD"  > "$RENDER_DIR/git_diff_head"
-printf '%s' "$UNTRACKED"      > "$RENDER_DIR/untracked"
-printf '%s' "$GIT_STATUS"     > "$RENDER_DIR/git_status"
-printf '%s' "$FILES_TOUCHED"  > "$RENDER_DIR/files_touched"
+printf '%s' "$GIT_DIFF_HEAD" > "$RENDER_DIR/git_diff_head" || { echo "ERROR: failed to write render input git_diff_head at $RENDER_DIR/git_diff_head" >&2; exit 1; }
+printf '%s' "$UNTRACKED" > "$RENDER_DIR/untracked" || { echo "ERROR: failed to write render input untracked at $RENDER_DIR/untracked" >&2; exit 1; }
+printf '%s' "$GIT_STATUS" > "$RENDER_DIR/git_status" || { echo "ERROR: failed to write render input git_status at $RENDER_DIR/git_status" >&2; exit 1; }
+printf '%s' "$FILES_TOUCHED" > "$RENDER_DIR/files_touched" || { echo "ERROR: failed to write render input files_touched at $RENDER_DIR/files_touched" >&2; exit 1; }
 
 PROMPT_FILE="$SCRATCH/grader-$ITER.prompt"
 : > "$PROMPT_FILE"   # truncate so a stale file doesn't masquerade as success

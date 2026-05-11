@@ -109,6 +109,27 @@ def test_paired_mode_materializes_objective_without_shell_state() -> None:
     assert "failed to write objective file" in text
 
 
+def test_paired_render_input_writes_fail_loudly() -> None:
+    text = PAIRED_MODE.read_text()
+
+    for name in ("git_diff_head", "untracked", "git_status", "files_touched"):
+        assert f"> \"$RENDER_DIR/{name}\" ||" in text
+        assert f"ERROR: failed to write render input {name}" in text
+
+
+def test_paired_files_touched_has_path_allowlist() -> None:
+    paired = PAIRED_MODE.read_text()
+    prompt = (REPO_ROOT / "skills/deliver/references/grader-prompt.md").read_text()
+
+    assert "_validated_files_touched=" in paired
+    assert "skipping unsafe FILES_TOUCHED path" in paired
+    assert "skipping FILES_TOUCHED path outside repo/tmp allowlist" in paired
+    assert '*"/../"*|../*|*/..|..|~*|/etc/*|/proc/*|/sys/*|/dev/*|/run/secrets/*|*.env*|*.pem|*.key|.ssh/*|*/.ssh/*|.aws/*|*/.aws/*|*id_rsa*|*id_ed25519*' in paired
+    assert '"$PWD"/*|./*|[!/]*)' in paired
+    assert "/tmp/*|/var/tmp/*" in paired
+    assert "drops `..`, system/secrets prefixes" in prompt
+
+
 def test_budget_limit_instructions_list_actual_placeholders() -> None:
     pure = PURE_MODE.read_text()
     paired = PAIRED_MODE.read_text()
