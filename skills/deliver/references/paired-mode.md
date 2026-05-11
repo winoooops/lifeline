@@ -43,7 +43,14 @@ else
   if [ -d "$_cache" ]; then
     # Newest-installed wins. Use mtime ordering (portable) instead of
     # `sort -V` which is GNU-only and missing on default macOS/BSD.
-    _latest=$(ls -1t "$_cache" 2>/dev/null | head -1)
+    # Filter to directories only — `ls -1t` lists files too, and on
+    # macOS Finder writes `.DS_Store` with a newer mtime than the
+    # version subdirs whenever the user opens the cache in Finder.
+    # Pipe-while-loop picks the first directory entry.
+    _latest=""
+    while IFS= read -r _e; do
+      [ -d "$_cache/$_e" ] && _latest="$_e" && break
+    done < <(ls -1t "$_cache" 2>/dev/null)
     if [ -n "$_latest" ] && [ -f "$_cache/$_latest/skills/deliver/schemas/grader-output.json" ]; then
       SKILL_DIR="$_cache/$_latest/skills/deliver"
     fi
@@ -146,7 +153,7 @@ for _f in "${UNTRACKED_INCLUDE[@]}"; do
     continue
   fi
   GIT_DIFF_HEAD+=$'\n'
-  GIT_DIFF_HEAD+=$(git diff --no-index --no-color /dev/null -- "$_f" 2>/dev/null || true)
+  GIT_DIFF_HEAD+=$(git diff --no-index --no-color -- /dev/null "$_f" 2>/dev/null || true)
 done
 
 # Render the grader template via a single-pass Python substitution.
@@ -197,7 +204,12 @@ template = open(os.environ['GRADER_TEMPLATE'], encoding='utf-8').read()
 # separate concern handled here. For text-mode evidence (diffs, file
 # lists), HTML-escaping is also reversible if a downstream consumer
 # wants to display it.
-def safe(p): return html.escape(open(p, encoding='utf-8').read(), quote=False)
+# errors='replace' substitutes U+FFFD for undecodable bytes — diffs
+# touching legacy-encoded source files (Latin-1, CP1252, Shift-JIS)
+# would otherwise raise UnicodeDecodeError, kill the renderer, and
+# silently route the iteration to grader-fallback. Lossy is better
+# than crashed.
+def safe(p): return html.escape(open(p, encoding='utf-8', errors='replace').read(), quote=False)
 
 mapping = {
     '{{ objective }}':       safe(f"{d}/objective"),
@@ -397,9 +409,10 @@ evidence_checked:
 note: paired mode degraded to self-audit for the final iteration — re-run when codex is reachable for an independent verdict.
 ```
 
-Then clean up the scratch dir:
+Then clean up the scratch dir. **Rehydrate `$SCRATCH` first** — this block runs in a fresh Bash tool call so the variable from Step 1 isn't in scope; without the rehydration, `rm -rf ""` is a no-op and the scratch dir leaks to /tmp on every successful run:
 
 ```bash
+SCRATCH=<paste the literal scratch path SCRATCH= line from Step 1 stdout>
 rm -rf "$SCRATCH"
 ```
 

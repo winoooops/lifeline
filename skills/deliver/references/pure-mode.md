@@ -42,7 +42,13 @@ else
   if [ -d "$_cache" ]; then
     # Newest-installed wins. Use mtime ordering (portable) instead of
     # `sort -V` which is GNU-only and missing on default macOS/BSD.
-    _latest=$(ls -1t "$_cache" 2>/dev/null | head -1)
+    # Filter to directories only — `ls -1t` lists files too, and on
+    # macOS Finder writes `.DS_Store` with a newer mtime than the
+    # version subdirs whenever the user opens the cache in Finder.
+    _latest=""
+    while IFS= read -r _e; do
+      [ -d "$_cache/$_e" ] && _latest="$_e" && break
+    done < <(ls -1t "$_cache" 2>/dev/null)
     if [ -n "$_latest" ] && [ -f "$_cache/$_latest/skills/deliver/schemas/grader-output.json" ]; then
       SKILL_DIR="$_cache/$_latest/skills/deliver"
     fi

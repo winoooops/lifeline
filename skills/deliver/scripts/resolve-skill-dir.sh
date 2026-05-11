@@ -46,8 +46,14 @@ if [ -d "$CACHE_ROOT" ]; then
   # Use mtime (`ls -1t`) instead of `sort -V` (GNU-only, missing on
   # default macOS/BSD). `/plugin install` writes a new directory each
   # time, so mtime ordering matches install recency for the typical
-  # one-or-two-cached-versions case.
-  LATEST="$(ls -1t "$CACHE_ROOT" 2>/dev/null | head -1 || true)"
+  # one-or-two-cached-versions case. Filter to directories only — on
+  # macOS Finder writes `.DS_Store` with a newer mtime than the version
+  # subdirs whenever the user browses the cache, and `ls -1t` would
+  # otherwise pick that file as `LATEST`.
+  LATEST=""
+  while IFS= read -r _entry; do
+    [ -d "$CACHE_ROOT/$_entry" ] && LATEST="$_entry" && break
+  done < <(ls -1t "$CACHE_ROOT" 2>/dev/null)
   if [ -n "$LATEST" ] && is_valid "$CACHE_ROOT/$LATEST/skills/deliver"; then
     printf '%s\n' "$CACHE_ROOT/$LATEST/skills/deliver"
     exit 0
