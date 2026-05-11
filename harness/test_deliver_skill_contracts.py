@@ -72,7 +72,10 @@ def test_paired_git_diff_head_has_size_cap() -> None:
     assert "_MAX_GIT_DIFF_HEAD_BYTES=524288" in text
     assert "wc -c" in text
     assert "tr -d '[:space:]'" in text
-    assert "head -c \"$_MAX_GIT_DIFF_HEAD_BYTES\" | sed '$d'" in text
+    assert "head -c \"$_MAX_GIT_DIFF_HEAD_BYTES\" > \"$_truncated_diff_file\"" in text
+    assert 'tail -c 1 "$_truncated_diff_file" | od -An -t x1' in text
+    assert 'if [ "$_last_truncated_byte" != "0a" ]; then' in text
+    assert "sed '$d' \"$_truncated_diff_file\"" in text
     assert "--- diff truncated at ${_MAX_GIT_DIFF_HEAD_BYTES}B on a line boundary ---" in text
     assert "final combined GIT_DIFF_HEAD cap below bounds" in text
     assert text.index("_git_diff_head_bytes=$(printf '%s' \"$GIT_DIFF_HEAD\"") > text.index(
@@ -143,6 +146,22 @@ def test_pure_mode_computes_escaped_objective_once() -> None:
     assert "do not substitute the raw `$OBJECTIVE`" in text
 
 
+def test_paired_mode_computes_escaped_objective_once() -> None:
+    text = PAIRED_MODE.read_text()
+
+    assert 'OBJECTIVE_DELIM="__OBJECTIVE_DELIM_PLACEHOLDER__"' in text
+    assert "guard comparison string" in text
+    assert "unchanged so it can catch a missed replacement" in text
+    assert "OBJECTIVE_RAW=$(cat <<'__OBJECTIVE_DELIM_PLACEHOLDER__'" in text
+    assert "objective placeholder was not replaced before running paired mode Step 1" in text
+    assert "sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g'" in text
+    assert 'OBJECTIVE_HTML_DELIM="LIFELINE_OBJECTIVE_HTML<$(date +%s):$$>"' in text
+    assert "OBJECTIVE_HTML cannot" in text
+    assert "printf 'OBJECTIVE_HTML<<%s\\n'" in text
+    assert "captured `OBJECTIVE_HTML`" in text
+    assert "do not substitute the raw `$OBJECTIVE`" in text
+
+
 def test_paired_mode_uses_timeout_command_array() -> None:
     text = PAIRED_MODE.read_text()
 
@@ -180,7 +199,8 @@ def test_in_context_objective_substitution_is_html_escaped() -> None:
     paired = PAIRED_MODE.read_text()
 
     assert "captured `OBJECTIVE_HTML`" in pure
-    assert "HTML-escaped `$OBJECTIVE`" in paired
+    assert "captured `OBJECTIVE_HTML`" in paired
+    assert "HTML-escaped `$OBJECTIVE`" not in paired
     assert "</untrusted_objective>` inside the user's objective stays data" in pure
     assert "</untrusted_objective>` inside the user's objective stays data" in paired
 

@@ -75,6 +75,31 @@ SCHEMA_PATH="$SKILL_DIR/schemas/grader-output.json"
 GRADER_TEMPLATE="$SKILL_DIR/references/grader-prompt.md"
 [ -f "$GRADER_TEMPLATE" ] || { echo "ERROR: grader template not found at $GRADER_TEMPLATE" >&2; exit 1; }
 
+# Paste the objective exactly as parsed in SKILL.md Step 0. Before
+# running this block, replace the assignment value plus the opening and
+# closing here-doc delimiters with the same fresh token that does not
+# occur anywhere in the objective. Leave the guard comparison string
+# unchanged so it can catch a missed replacement.
+OBJECTIVE_DELIM="__OBJECTIVE_DELIM_PLACEHOLDER__"
+if [ "$OBJECTIVE_DELIM" = "__OBJECTIVE_DELIM_PLACEHOLDER__" ]; then
+  echo "ERROR: replace the objective delimiter placeholder before running paired mode Step 1." >&2
+  exit 1
+fi
+OBJECTIVE_RAW=$(cat <<'__OBJECTIVE_DELIM_PLACEHOLDER__'
+<paste the exact OBJECTIVE from SKILL.md Step 0>
+__OBJECTIVE_DELIM_PLACEHOLDER__
+)
+case "$OBJECTIVE_RAW" in
+  *"<paste the exact OBJECTIVE from SKILL.md Step 0>"*)
+    echo "ERROR: objective placeholder was not replaced before running paired mode Step 1." >&2
+    exit 1
+    ;;
+esac
+OBJECTIVE_HTML=$(printf '%s' "$OBJECTIVE_RAW" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
+# Delimiter contains literal angle brackets; OBJECTIVE_HTML cannot,
+# because Step 1 escaped every `<` and `>` in the objective.
+OBJECTIVE_HTML_DELIM="LIFELINE_OBJECTIVE_HTML<$(date +%s):$$>"
+
 # Tool preflight: jq is required for the verdict-validation gate. If
 # missing, every iteration's grader output goes through the schema
 # check, which silently exits non-zero (`command not found`) and the
@@ -129,9 +154,12 @@ echo "SCHEMA_PATH=$SCHEMA_PATH"
 echo "GRADER_TEMPLATE=$GRADER_TEMPLATE"
 echo "ITER=$ITER"
 echo "GRADER_UNUSABLE_STREAK_INIT=$GRADER_UNUSABLE_STREAK"
+printf 'OBJECTIVE_HTML<<%s\n' "$OBJECTIVE_HTML_DELIM"
+printf '%s\n' "$OBJECTIVE_HTML"
+printf '%s\n' "$OBJECTIVE_HTML_DELIM"
 ```
 
-Capture all six values (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE`, `ITER`, `GRADER_UNUSABLE_STREAK_INIT`) from this call's stdout and use them as literal paths/integers in every subsequent Bash call.
+Capture all six scalar values (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE`, `ITER`, `GRADER_UNUSABLE_STREAK_INIT`) and the heredoc-style `OBJECTIVE_HTML` block from this call's stdout. Use the scalar values as literal paths/integers in every subsequent Bash call. Use the captured `OBJECTIVE_HTML` value for every `{{ objective }}` substitution; do not substitute the raw `$OBJECTIVE` into a prompt wrapper.
 
 Use `GRADER_UNUSABLE_STREAK_INIT` only to seed iteration 0. After Step 2c has run once, the scratch-backed streak file and the latest Step 2c `GRADER_UNUSABLE_STREAK=...` echo become the source of truth.
 
@@ -145,7 +173,7 @@ While `ITER < CAP`:
 
 Read `$SKILL_DIR/references/continuation.md`. Substitute placeholders in your reasoning context:
 
-- `{{ objective }}` → HTML-escaped `$OBJECTIVE` (`&` → `&amp;`, `<` → `&lt;`, `>` → `&gt;`) so a literal `</untrusted_objective>` inside the user's objective stays data and cannot close the wrapper in `continuation.md`
+- `{{ objective }}` → captured `OBJECTIVE_HTML`, so a literal `</untrusted_objective>` inside the user's objective stays data and cannot close the wrapper in `continuation.md`
 - `{{ iter_used }}` → current `$ITER`
 - `{{ iter_budget }}` → `$CAP`
 - `{{ iter_remaining }}` → `$((CAP - ITER))`
@@ -261,7 +289,16 @@ done
 
 _git_diff_head_bytes=$(printf '%s' "$GIT_DIFF_HEAD" | wc -c | tr -d '[:space:]')
 if [ "$_git_diff_head_bytes" -gt "$_MAX_GIT_DIFF_HEAD_BYTES" ]; then
-  GIT_DIFF_HEAD="$(printf '%s' "$GIT_DIFF_HEAD" | head -c "$_MAX_GIT_DIFF_HEAD_BYTES" | sed '$d')"$'\n'"--- diff truncated at ${_MAX_GIT_DIFF_HEAD_BYTES}B on a line boundary ---"
+  _truncated_diff_file="$SCRATCH/git-diff-head-$ITER.truncated"
+  _truncated_diff_lines_file="$SCRATCH/git-diff-head-$ITER.truncated.lines"
+  printf '%s' "$GIT_DIFF_HEAD" | head -c "$_MAX_GIT_DIFF_HEAD_BYTES" > "$_truncated_diff_file"
+  _last_truncated_byte=$(tail -c 1 "$_truncated_diff_file" | od -An -t x1 | tr -d '[:space:]')
+  if [ "$_last_truncated_byte" != "0a" ]; then
+    sed '$d' "$_truncated_diff_file" > "$_truncated_diff_lines_file"
+    mv "$_truncated_diff_lines_file" "$_truncated_diff_file"
+  fi
+  GIT_DIFF_HEAD="$(cat "$_truncated_diff_file")"$'\n'"--- diff truncated at ${_MAX_GIT_DIFF_HEAD_BYTES}B on a line boundary ---"
+  rm -f "$_truncated_diff_file" "$_truncated_diff_lines_file"
 fi
 
 # Render the grader template via a single-pass Python substitution.
@@ -596,7 +633,7 @@ fi
 
 ### Budget-limited path
 
-When `ITER == CAP` without a complete verdict, read `$SKILL_DIR/references/budget_limit.md`, substitute only the placeholders that file contains (`{{ objective }}` → HTML-escaped objective, `{{ iter_used }}` → current `$ITER` which equals `$CAP`, `{{ iter_budget }}` → `$CAP`), and use it for one wrap-up turn. Then emit:
+When `ITER == CAP` without a complete verdict, read `$SKILL_DIR/references/budget_limit.md`, substitute only the placeholders that file contains (`{{ objective }}` → captured `OBJECTIVE_HTML`, `{{ iter_used }}` → current `$ITER` which equals `$CAP`, `{{ iter_budget }}` → `$CAP`), and use it for one wrap-up turn. Then emit:
 
 ```
 Deliveries halted at iteration cap (<MINS>m <SECS>s elapsed).
