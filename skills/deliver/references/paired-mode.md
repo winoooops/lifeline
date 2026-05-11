@@ -99,15 +99,17 @@ ITER=0   # explicit initial value, echoed below so the first iteration
          # of the loop has a stdout-echoed value to rehydrate from
          # alongside the other captures (Step 2d echoes the incremented
          # ITER for subsequent iterations).
+GRADER_UNUSABLE_STREAK=0
 
 echo "SCRATCH=$SCRATCH"
 echo "SKILL_DIR=$SKILL_DIR"
 echo "SCHEMA_PATH=$SCHEMA_PATH"
 echo "GRADER_TEMPLATE=$GRADER_TEMPLATE"
 echo "ITER=$ITER"
+echo "GRADER_UNUSABLE_STREAK=$GRADER_UNUSABLE_STREAK"
 ```
 
-Capture all five values (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE`, `ITER`) from this call's stdout and use them as literal paths/integers in every subsequent Bash call.
+Capture all six values (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE`, `ITER`, `GRADER_UNUSABLE_STREAK`) from this call's stdout and use them as literal paths/integers in every subsequent Bash call.
 
 If `$SKILL_DIR` ends up empty, the grader template is missing, jq isn't on PATH, or python3 isn't on PATH, **report a startup error and stop**. Do not enter the loop. Silent fallback to pure mode is the bug we are explicitly guarding against.
 
@@ -134,7 +136,7 @@ Optionally maintain a mental list of files you touched this iteration — it get
 
 ### 2c. Run the codex grader
 
-Build the grader prompt and invoke `codex exec`. **Rehydrate `ITER` as a shell variable** at the top of the block — the same `VAR=<paste literal value>` pattern used for `SCRATCH`/`SKILL_DIR`/`SCHEMA_PATH`/`GRADER_TEMPLATE`. The current ITER value comes from Step 1's `echo "ITER=$ITER"` (for the first iteration) or from the previous iteration's Step 2d post-increment echo. Do NOT inline-substitute `$ITER` throughout the block — that breaks the `${ITER:?}` guard (it would become `${1:?}` etc., where `$N` is the empty positional parameter). Set ITER once at the top; let bash do the variable expansion below.
+Build the grader prompt and invoke `codex exec`. **Rehydrate `ITER` as a shell variable** at the top of the block — the same `VAR=<paste literal value>` pattern used for `SCRATCH`/`SKILL_DIR`/`SCHEMA_PATH`/`GRADER_TEMPLATE`/`GRADER_UNUSABLE_STREAK`. The current ITER value comes from Step 1's `echo "ITER=$ITER"` (for the first iteration) or from the previous iteration's Step 2d post-increment echo. The grader-unusable streak comes from Step 1 initially, then from the previous Step 2c verdict-parsing stdout. Do NOT inline-substitute `$ITER` throughout the block — that breaks the `${ITER:?}` guard (it would become `${1:?}` etc., where `$N` is the empty positional parameter). Set ITER once at the top; let bash do the variable expansion below.
 
 The `${ITER:?}` guard exits with an error if rehydration was missed, converting silent per-iteration path collisions (`grader-.json`, `render-input-/` overwriting on every iteration) into a loud startup failure. The `${SCRATCH:?}` guard does the same for the scratch root before any per-iteration artifact paths are built.
 
@@ -152,8 +154,10 @@ SCRATCH=<paste the literal SCRATCH value from Step 1>
 SKILL_DIR=<paste the literal SKILL_DIR value from Step 1>
 SCHEMA_PATH=<paste the literal SCHEMA_PATH value from Step 1>
 GRADER_TEMPLATE=<paste the literal GRADER_TEMPLATE value from Step 1>
+GRADER_UNUSABLE_STREAK=<paste the literal GRADER_UNUSABLE_STREAK value from Step 1 or previous Step 2c, e.g. 0 or 2>
 : "${ITER:?ITER must be rehydrated from the previous echo; see Step 2c preamble}"
 : "${SCRATCH:?SCRATCH must be rehydrated from Step 1 echo; see Step 2c preamble}"
+: "${GRADER_UNUSABLE_STREAK:?GRADER_UNUSABLE_STREAK must be rehydrated from the previous echo; see Step 2c preamble}"
 
 # Tracked-file diff. `git diff HEAD` omits untracked file CONTENTS — for
 # objectives that create new files, the grader otherwise sees only the
@@ -379,6 +383,8 @@ if [ "$CODEX_EXIT" -eq 0 ] && [ -s "$SCRATCH/grader-$ITER.json" ] \
   # accept; such a verdict routes through the grader-fallback branch
   # instead of being treated as success.
   COMPLETE=$(jq -r '.complete' "$SCRATCH/grader-$ITER.json")
+  GRADER_UNUSABLE_STREAK=0
+  echo "GRADER_UNUSABLE_STREAK=$GRADER_UNUSABLE_STREAK"
   if [ "$COMPLETE" = "true" ]; then
     VERDICT="complete"
     echo "VERDICT=complete"
@@ -395,6 +401,8 @@ if [ "$CODEX_EXIT" -eq 0 ] && [ -s "$SCRATCH/grader-$ITER.json" ] \
   fi
 else
   VERDICT_SOURCE="self-audit-fallback"
+  GRADER_UNUSABLE_STREAK=$((GRADER_UNUSABLE_STREAK + 1))
+  echo "GRADER_UNUSABLE_STREAK=$GRADER_UNUSABLE_STREAK"
   # Stdout contract: every parsed value goes to stdout (the agent reads
   # stdout for downstream reasoning). Stderr is for human-only warning
   # noise. Earlier this echoed VERDICT to stderr, which violated the
@@ -406,11 +414,15 @@ else
     echo "VERDICT=grader_unusable (codex_exit=$CODEX_EXIT, file empty/malformed)"
   fi
   echo "VERDICT_SOURCE=$VERDICT_SOURCE"
-  echo "FALLBACK: apply continuation.md audit checklist to your last action this iteration"
   # Human-readable warning (mirror of the structured VERDICT line above)
   # to stderr so a tail -f session sees the failure even when the agent
   # is consuming stdout programmatically.
-  echo "WARN: codex grader unusable this iteration; see grader-$ITER.{stderr.log,events.log,render-stderr}" >&2
+  echo "WARN: codex grader unusable this iteration (consecutive=$GRADER_UNUSABLE_STREAK/3); see grader-$ITER.{stderr.log,events.log,render-stderr}" >&2
+  if [ "$GRADER_UNUSABLE_STREAK" -ge 3 ]; then
+    echo "ERROR: codex grader unusable for $GRADER_UNUSABLE_STREAK consecutive iterations; stopping instead of silently degrading paired mode to self-audit." >&2
+    exit 1
+  fi
+  echo "FALLBACK: apply continuation.md audit checklist to your last action this iteration"
   # → apply continuation.md audit checklist to your last action
   # → if audit returns complete, go to Step 3 (record VERDICT_SOURCE=self-audit-fallback)
   # → else continue loop
@@ -418,9 +430,9 @@ else
 fi
 ```
 
-Carry `VERDICT_SOURCE` ("grader" or "self-audit-fallback") forward to Step 3 — the success report needs it to decide where evidence comes from.
+Carry `VERDICT_SOURCE` ("grader" or "self-audit-fallback") forward to Step 3 — the success report needs it to decide where evidence comes from. Also carry the printed `GRADER_UNUSABLE_STREAK`; rehydrate it in the next Step 2c call.
 
-**If `VERDICT` is `complete`, proceed directly to Step 3 (success path) — do not execute Step 2d.** Only continue to 2d when the verdict was `incomplete` or `grader_unusable` (fallback). Without this jump, the loop would over-iterate even on a complete verdict, eventually misreporting `budget_limited` on an objective the grader already passed.
+**If `VERDICT` is `complete`, proceed directly to Step 3 (success path) — do not execute Step 2d.** Only continue to 2d when the verdict was `incomplete` or `grader_unusable` (fallback). If the Step 2c Bash block exits with the consecutive-grader-unusable hard error, stop and report that error instead of continuing to self-audit. Without the completion jump, the loop would over-iterate even on a complete verdict, eventually misreporting `budget_limited` on an objective the grader already passed.
 
 ### 2d. Increment
 
@@ -433,7 +445,7 @@ ITER=$((ITER + 1))
 echo "ITER=$ITER"
 ```
 
-If `ITER < CAP`, loop back to 2a (and rehydrate the new `ITER` value at the top of 2c, alongside `SCRATCH` etc.).
+If `ITER < CAP`, loop back to 2a (and rehydrate the new `ITER` value at the top of 2c, alongside `SCRATCH`, `GRADER_UNUSABLE_STREAK`, etc.).
 
 ## Step 3: Final report
 
@@ -519,7 +531,7 @@ note: scratch dir preserved for postmortem inspection. Raw codex verdicts (when 
 |---|---|
 | Empty objective | Already handled in `SKILL.md` Step 0 via `AskUserQuestion`. |
 | Schema file resolution fails (Step 1) | Hard error; do not enter loop. Silent degradation to pure mode is exactly what we are guarding against. |
-| Codex unavailable / not authed | First grader call fails with non-zero exit; surface its stderr in the warning; route through the grader-fallback path (apply the in-context audit for that iteration only). No upfront preflight on `~/.codex/auth.json` — it's not the only valid auth path (`CODEX_HOME` env override exists). |
-| Grader subprocess fails (timeout, non-zero exit, malformed JSON, empty result file) | Same grader-fallback. Mode does NOT switch globally — the next iteration retries codex. |
+| Codex unavailable / not authed | First grader call fails with non-zero exit; surface its stderr in the warning; route through the grader-fallback path while under the consecutive-grader-unusable threshold. No upfront preflight on `~/.codex/auth.json` — it's not the only valid auth path (`CODEX_HOME` env override exists). |
+| Grader subprocess fails (timeout, non-zero exit, malformed JSON, empty result file) | Same grader-fallback for the first two consecutive unusable grader iterations, with `GRADER_UNUSABLE_STREAK` echoed for rehydration. The third consecutive unusable grader result is a hard error so paired mode cannot silently degrade to self-audit for the whole run. A subsequent usable grader verdict resets the streak to 0. |
 | `git diff HEAD` errors (no commits yet on this branch) | Pass empty diff; grader still has objective + untracked + status. |
 | Out-of-repo objective | Git evidence will be empty. Include the relevant path(s) in `FILES_TOUCHED` so the grader knows where to `cat`/`ls` directly under `--sandbox read-only`. The grader prompt explicitly handles this case. |
