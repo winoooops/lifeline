@@ -93,6 +93,25 @@ command -v python3 >/dev/null 2>&1 || {
   exit 1
 }
 
+# Tool preflight: codex exec must support the flags paired mode uses. If
+# an older Codex CLI lacks one of these flags, every grader invocation
+# fails non-zero and looks like a grader outage after the streak guard
+# trips. Catch version mismatch at startup instead.
+command -v codex >/dev/null 2>&1 || {
+  echo "ERROR: codex CLI is required for paired-mode grading. Install or upgrade codex and re-run." >&2
+  exit 1
+}
+_codex_exec_help=$(codex exec --help 2>&1 || true)
+for _flag in --sandbox --ephemeral --output-schema --output-last-message; do
+  case "$_codex_exec_help" in
+    *"$_flag"*) ;;
+    *)
+      echo "ERROR: codex exec is missing required flag $_flag. Upgrade Codex CLI and re-run." >&2
+      exit 1
+      ;;
+  esac
+done
+
 # All validations passed — now safe to allocate the scratch directory.
 SCRATCH=$(mktemp -d -t lifeline-deliver-XXXXXX)
 ITER=0   # explicit initial value, echoed below so the first iteration
@@ -448,7 +467,7 @@ else
   echo "WARN: codex grader unusable this iteration (consecutive=$GRADER_UNUSABLE_STREAK/3); see $SCRATCH/grader-$ITER.{stderr.log,events.log,render-stderr}" >&2
   if [ "$GRADER_UNUSABLE_STREAK" -ge 3 ]; then
     echo "ERROR: codex grader unusable for $GRADER_UNUSABLE_STREAK consecutive iterations; stopping instead of silently degrading paired mode to self-audit." >&2
-    echo "scratch_dir: $SCRATCH" >&2
+    echo "scratch_dir: $SCRATCH"
     exit 1
   fi
   echo "FALLBACK: apply continuation.md audit checklist to your last action this iteration"

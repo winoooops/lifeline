@@ -22,11 +22,20 @@ def _resolver_bash_block(path: Path) -> str:
     marker = "# MIRROR OF skills/deliver/scripts/resolve-skill-dir.sh"
     marker_at = text.find(marker)
     assert marker_at != -1, f"{path} is missing the resolver mirror marker"
-    fence_at = text.rfind("```bash\n", 0, marker_at)
-    assert fence_at != -1, f"{path} is missing a bash fence before the mirror marker"
-    start = fence_at + len("```bash\n")
-    end = text.index("```", marker_at)
-    return text[start:end]
+    start = text.find('SKILL_DIR=""', marker_at)
+    assert start != -1, f"{path} is missing SKILL_DIR initialization after marker"
+
+    end_candidates = [
+        pos
+        for pos in (
+            text.find("\nSCHEMA_PATH=", start),
+            text.find("\nITER=0", start),
+        )
+        if pos != -1
+    ]
+    assert end_candidates, f"{path} is missing a resolver end marker"
+    end = min(end_candidates)
+    return text[start:end].rstrip() + '\n\necho "SKILL_DIR=$SKILL_DIR"\n'
 
 
 RESOLVERS = {
@@ -34,6 +43,16 @@ RESOLVERS = {
     "paired-mode.md inline block": ("inline", PAIRED_MODE),
     "resolve-skill-dir.sh": ("script", RESOLVER_SCRIPT),
 }
+
+
+def test_inline_resolver_extraction_excludes_surrounding_initialization() -> None:
+    paired = _resolver_bash_block(PAIRED_MODE)
+
+    assert "SCHEMA_PATH=" not in paired
+    assert "GRADER_TEMPLATE=" not in paired
+    assert "command -v jq" not in paired
+    assert "command -v python3" not in paired
+    assert "mktemp" not in paired
 
 
 def _make_deliver_skill(path: Path) -> Path:

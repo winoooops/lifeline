@@ -49,6 +49,21 @@ def test_paired_untracked_evidence_has_file_and_total_caps() -> None:
     assert "remaining files omitted" in text
 
 
+def test_paired_mode_preflights_required_codex_exec_flags() -> None:
+    text = PAIRED_MODE.read_text()
+
+    assert "codex exec --help" in text
+    assert "for _flag in --sandbox --ephemeral --output-schema --output-last-message" in text
+    assert "codex exec is missing required flag" in text
+
+
+def test_grader_unusable_hard_error_prints_scratch_dir_to_stdout() -> None:
+    text = PAIRED_MODE.read_text()
+
+    assert 'echo "scratch_dir: $SCRATCH"' in text
+    assert 'echo "scratch_dir: $SCRATCH" >&2' not in text
+
+
 def test_success_reports_use_computed_iteration_count() -> None:
     pure = PURE_MODE.read_text()
     paired = PAIRED_MODE.read_text()
