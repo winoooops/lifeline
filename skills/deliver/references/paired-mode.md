@@ -50,6 +50,11 @@ version_key() {
   case "$_major" in ""|*[!0-9]*) _major=0 ;; esac
   case "$_minor" in ""|*[!0-9]*) _minor=0 ;; esac
   case "$_patch" in ""|*[!0-9]*) _patch=0 ;; esac
+  case "${_rest:-}" in
+    "") _rest= ;;
+    *[!0-9]*) ;;
+    *) _rest=$(printf '%010d' "$((10#$_rest))") ;;
+  esac
   printf '%010d.%010d.%010d.%s\n' "$((10#$_major))" "$((10#$_minor))" "$((10#$_patch))" "${_rest:-}"
 }
 if [ -n "${LIFELINE_SKILL_DIR:-}" ] && [ -f "$LIFELINE_SKILL_DIR/schemas/grader-output.json" ]; then
@@ -87,10 +92,12 @@ fi
 
 SCHEMA_PATH="$SKILL_DIR/schemas/grader-output.json"
 GRADER_TEMPLATE="$SKILL_DIR/references/grader-prompt.md"
+RENDER_TEMPLATE="$SKILL_DIR/scripts/render-template.sh"
 [ -f "$SCHEMA_PATH" ] || { echo "ERROR: grader schema not found at $SCHEMA_PATH" >&2; exit 1; }
 [ -f "$GRADER_TEMPLATE" ] || { echo "ERROR: grader template not found at $GRADER_TEMPLATE" >&2; exit 1; }
 [ -f "$SKILL_DIR/references/continuation.md" ] || { echo "ERROR: continuation.md not found at $SKILL_DIR/references/continuation.md" >&2; exit 1; }
 [ -f "$SKILL_DIR/references/budget_limit.md" ] || { echo "ERROR: budget_limit.md not found at $SKILL_DIR/references/budget_limit.md" >&2; exit 1; }
+[ -x "$RENDER_TEMPLATE" ] || { echo "ERROR: render-template.sh not executable at $RENDER_TEMPLATE" >&2; exit 1; }
 
 # Paste the objective exactly as parsed in SKILL.md Step 0. Replace the
 # single-quoted placeholder below with the exact objective as a Bash
@@ -103,9 +110,6 @@ if [ "$OBJECTIVE_RAW" = "__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__" ]; then
   exit 1
 fi
 OBJECTIVE_HTML=$(printf '%s' "$OBJECTIVE_RAW" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
-# Delimiter contains literal angle brackets; OBJECTIVE_HTML cannot,
-# because Step 1 escaped every `<` and `>` in the objective.
-OBJECTIVE_HTML_DELIM="LIFELINE_OBJECTIVE_HTML<$(date +%s):$$>"
 
 # Tool preflight: jq is required for the verdict-validation gate. If
 # missing, every iteration's grader output goes through the schema
@@ -148,6 +152,8 @@ done
 
 # All validations passed — now safe to allocate the scratch directory.
 SCRATCH=$(mktemp -d -t lifeline-deliver-XXXXXX)
+OBJECTIVE_HTML_FILE="$SCRATCH/objective.html"
+printf '%s' "$OBJECTIVE_HTML" > "$OBJECTIVE_HTML_FILE" || { echo "ERROR: failed to write objective HTML at $OBJECTIVE_HTML_FILE" >&2; exit 1; }
 ITER=0   # explicit initial value, echoed below so the first iteration
          # of the loop has a stdout-echoed value to rehydrate from
          # alongside the other captures (Step 2d echoes the incremented
@@ -159,14 +165,13 @@ echo "SCRATCH=$SCRATCH"
 echo "SKILL_DIR=$SKILL_DIR"
 echo "SCHEMA_PATH=$SCHEMA_PATH"
 echo "GRADER_TEMPLATE=$GRADER_TEMPLATE"
+echo "RENDER_TEMPLATE=$RENDER_TEMPLATE"
+echo "OBJECTIVE_HTML_FILE=$OBJECTIVE_HTML_FILE"
 echo "ITER=$ITER"
 echo "GRADER_UNUSABLE_STREAK_INIT=$GRADER_UNUSABLE_STREAK"
-printf 'OBJECTIVE_HTML<<%s\n' "$OBJECTIVE_HTML_DELIM"
-printf '%s\n' "$OBJECTIVE_HTML"
-printf '%s\n' "$OBJECTIVE_HTML_DELIM"
 ```
 
-Capture all six scalar values (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE`, `ITER`, `GRADER_UNUSABLE_STREAK_INIT`) and the heredoc-style `OBJECTIVE_HTML` block from this call's stdout. Use the scalar values as literal paths/integers in every subsequent Bash call. Use the captured `OBJECTIVE_HTML` value for every `{{ objective }}` substitution; do not substitute the raw `$OBJECTIVE` into a prompt wrapper.
+Capture all eight scalar values (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE`, `RENDER_TEMPLATE`, `OBJECTIVE_HTML_FILE`, `ITER`, `GRADER_UNUSABLE_STREAK_INIT`) from this call's stdout. Use the scalar values as literal paths/integers in every subsequent Bash call. Do not substitute `{{ objective }}` manually; every continuation and budget-limit prompt must be rendered through `RENDER_TEMPLATE`, which reads the code-generated `OBJECTIVE_HTML_FILE`.
 
 Use `GRADER_UNUSABLE_STREAK_INIT` only to seed iteration 0. After Step 2c has run once, the scratch-backed streak file and the latest Step 2c `GRADER_UNUSABLE_STREAK=...` echo become the source of truth.
 
@@ -178,14 +183,34 @@ While `ITER < CAP`:
 
 ### 2a. Read continuation template
 
-Read `$SKILL_DIR/references/continuation.md`. Substitute placeholders in your reasoning context:
+Render the continuation template into `$SCRATCH`, then read the rendered file. Rehydrate the captured values literally:
 
-- `{{ objective }}` → captured `OBJECTIVE_HTML`, so a literal `</untrusted_objective>` inside the user's objective stays data and cannot close the wrapper in `continuation.md`
-- `{{ iter_used }}` → current `$ITER`
-- `{{ iter_budget }}` → `$CAP`
-- `{{ iter_remaining }}` → `$((CAP - ITER))`
+```bash
+ITER=<paste the literal ITER value from Step 1 or the previous Step 2d echo, e.g. ITER=0 or ITER=3>
+CAP=<paste the literal CAP value from SKILL.md Step 0, e.g. CAP=20>
+SCRATCH=<paste the literal SCRATCH value from Step 1>
+SKILL_DIR=<paste the literal SKILL_DIR value from Step 1>
+RENDER_TEMPLATE=<paste the literal RENDER_TEMPLATE value from Step 1>
+OBJECTIVE_HTML_FILE=<paste the literal OBJECTIVE_HTML_FILE value from Step 1>
+: "${ITER:?ITER must be rehydrated before rendering continuation.md}"
+: "${CAP:?CAP must be rehydrated from SKILL.md Step 0}"
+: "${SCRATCH:?SCRATCH must be rehydrated from Step 1 echo}"
+: "${SKILL_DIR:?SKILL_DIR must be rehydrated from Step 1 echo}"
+: "${RENDER_TEMPLATE:?RENDER_TEMPLATE must be rehydrated from Step 1 echo}"
+: "${OBJECTIVE_HTML_FILE:?OBJECTIVE_HTML_FILE must be rehydrated from Step 1 echo}"
 
-The continuation prompt is the audit checklist that frames your next action. Keep it in your reasoning context until 2c.
+CONTINUATION_RENDERED="$SCRATCH/continuation-$ITER.rendered"
+"$RENDER_TEMPLATE" \
+  "$SKILL_DIR/references/continuation.md" \
+  "$OBJECTIVE_HTML_FILE" \
+  "$CONTINUATION_RENDERED" \
+  --iter-used "$ITER" \
+  --iter-budget "$CAP" \
+  --iter-remaining "$((CAP - ITER))" || exit 1
+echo "CONTINUATION_RENDERED=$CONTINUATION_RENDERED"
+```
+
+Read the rendered file path printed after `CONTINUATION_RENDERED=`. Do not read `continuation.md` directly and do not perform in-context placeholder substitution. The rendered continuation prompt is the audit checklist that frames your next action. Keep it in your reasoning context until 2c.
 
 ### 2b. Take the next concrete action
 
@@ -245,8 +270,10 @@ FILES_TOUCHED=""   # leave empty by default; if your objective is out-of-repo
                    # the grader knows where to inspect. Repo-relative paths
                    # must use an explicit ./ prefix. Only repo-relative,
                    # repo-absolute, /tmp, and /var/tmp paths survive the
-                   # validation below. The grader treats empty `files_touched`
-                   # as "no orientation hint, fall back to git evidence."
+                   # validation below. Paths containing <, >, or & are rejected
+                   # so rendered path hints never depend on LLM-side HTML decode.
+                   # The grader treats empty `files_touched` as "no orientation
+                   # hint, fall back to git evidence."
 
 # UNTRACKED_INCLUDE — bash array of paths whose CONTENT (not just
 # filename) the grader needs to see. The agent populates this each
@@ -314,7 +341,7 @@ _validated_files_touched=""
 while IFS= read -r _path || [ -n "$_path" ]; do
   [ -z "$_path" ] && continue
   case "$_path" in
-    *"/../"*|../*|*/..|..|~*|/etc/*|/proc/*|/sys/*|/dev/*|/run/secrets/*|*.env*|*.npmrc*|*.netrc*|*.pypirc*|*.git-credentials*|credentials|*/credentials|*.pem|*.key|.ssh/*|*/.ssh/*|.aws/*|*/.aws/*|*id_rsa*|*id_ed25519*)
+    *"<"*|*">"*|*"&"*|*"/../"*|../*|*/..|..|~*|/etc/*|/proc/*|/sys/*|/dev/*|/run/secrets/*|*.env*|*.npmrc*|*.netrc*|*.pypirc*|*.git-credentials*|credentials|*/credentials|*.pem|*.key|.ssh/*|*/.ssh/*|.aws/*|*/.aws/*|*id_rsa*|*id_ed25519*)
       echo "WARN: skipping unsafe FILES_TOUCHED path: $_path" >&2
       continue
       ;;
@@ -347,8 +374,6 @@ FILES_TOUCHED="$_validated_files_touched"
 # ENV would fail python3's exec() before any rendering happened. The
 # stdin path below for codex exec is the same fix applied at the
 # next layer.
-RENDER_DIR="$SCRATCH/render-input-$ITER"
-mkdir -p "$RENDER_DIR" || { echo "ERROR: failed to create render dir at $RENDER_DIR" >&2; exit 1; }
 # Paste the objective exactly as parsed in SKILL.md Step 0. Do not rely
 # on a `$OBJECTIVE` shell variable — Bash state does not persist between
 # tool calls. Replace the single-quoted placeholder below with the exact
@@ -360,6 +385,8 @@ if [ "$OBJECTIVE_RAW" = "__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__" ]; then
   echo "ERROR: replace the objective single-quoted placeholder before running paired mode Step 2c." >&2
   exit 1
 fi
+RENDER_DIR="$SCRATCH/render-input-$ITER"
+mkdir -p "$RENDER_DIR" || { echo "ERROR: failed to create render dir at $RENDER_DIR" >&2; exit 1; }
 printf '%s' "$OBJECTIVE_RAW" > "$RENDER_DIR/objective" || { echo "ERROR: failed to write objective file at $RENDER_DIR/objective" >&2; exit 1; }
 printf '%s' "$GIT_DIFF_HEAD" > "$RENDER_DIR/git_diff_head" || { echo "ERROR: failed to write render input git_diff_head at $RENDER_DIR/git_diff_head" >&2; exit 1; }
 printf '%s' "$UNTRACKED" > "$RENDER_DIR/untracked" || { echo "ERROR: failed to write render input untracked at $RENDER_DIR/untracked" >&2; exit 1; }
@@ -389,9 +416,9 @@ template = open(os.environ['GRADER_TEMPLATE'], encoding='utf-8', errors='replace
 # already collision-safe (single re.sub pass over the original template
 # buffer, so values can't re-match other placeholder patterns), but
 # that only protects template structure; XML delimiter integrity is a
-# separate concern handled here. The grader prompt explicitly tells the
-# grader to HTML-decode `files_touched` paths once before passing them
-# to cat/ls, preserving real paths without allowing wrapper breakout.
+# separate concern handled here. `files_touched` paths containing HTML-
+# special characters are rejected before rendering, so the grader never
+# has to decode path hints before passing them to cat/ls.
 # errors='replace' substitutes U+FFFD for undecodable bytes — diffs
 # touching legacy-encoded source files (Latin-1, CP1252, Shift-JIS)
 # would otherwise raise UnicodeDecodeError, kill the renderer, and
@@ -658,7 +685,33 @@ fi
 
 ### Budget-limited path
 
-When `ITER == CAP` without a complete verdict, read `$SKILL_DIR/references/budget_limit.md`, substitute only the placeholders that file contains (`{{ objective }}` → captured `OBJECTIVE_HTML`, `{{ iter_used }}` → current `$ITER` which equals `$CAP`, `{{ iter_budget }}` → `$CAP`), and use it for one wrap-up turn. Then emit:
+When `ITER == CAP` without a complete verdict, render `$SKILL_DIR/references/budget_limit.md` through the same code path and use the rendered file for one wrap-up turn. The renderer supplies `{{ objective }}` from `OBJECTIVE_HTML_FILE`, `{{ iter_used }}` from `ITER`, and `{{ iter_budget }}` from `CAP`:
+
+```bash
+ITER=<paste the literal ITER value from the final Step 2d echo; it must equal CAP>
+CAP=<paste the literal CAP value from SKILL.md Step 0, e.g. CAP=20>
+SCRATCH=<paste the literal SCRATCH value from Step 1>
+SKILL_DIR=<paste the literal SKILL_DIR value from Step 1>
+RENDER_TEMPLATE=<paste the literal RENDER_TEMPLATE value from Step 1>
+OBJECTIVE_HTML_FILE=<paste the literal OBJECTIVE_HTML_FILE value from Step 1>
+: "${ITER:?ITER must be rehydrated before rendering budget_limit.md}"
+: "${CAP:?CAP must be rehydrated from SKILL.md Step 0}"
+: "${SCRATCH:?SCRATCH must be rehydrated from Step 1 echo}"
+: "${SKILL_DIR:?SKILL_DIR must be rehydrated from Step 1 echo}"
+: "${RENDER_TEMPLATE:?RENDER_TEMPLATE must be rehydrated from Step 1 echo}"
+: "${OBJECTIVE_HTML_FILE:?OBJECTIVE_HTML_FILE must be rehydrated from Step 1 echo}"
+
+BUDGET_LIMIT_RENDERED="$SCRATCH/budget-limit.rendered"
+"$RENDER_TEMPLATE" \
+  "$SKILL_DIR/references/budget_limit.md" \
+  "$OBJECTIVE_HTML_FILE" \
+  "$BUDGET_LIMIT_RENDERED" \
+  --iter-used "$ITER" \
+  --iter-budget "$CAP" || exit 1
+echo "BUDGET_LIMIT_RENDERED=$BUDGET_LIMIT_RENDERED"
+```
+
+Read the rendered file path printed after `BUDGET_LIMIT_RENDERED=`. Do not read `budget_limit.md` directly and do not perform in-context placeholder substitution. Then emit:
 
 ```
 Deliveries halted at iteration cap (<MINS>m <SECS>s elapsed).

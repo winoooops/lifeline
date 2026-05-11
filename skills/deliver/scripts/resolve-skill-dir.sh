@@ -57,6 +57,11 @@ version_key() {
   case "$_major" in ""|*[!0-9]*) _major=0 ;; esac
   case "$_minor" in ""|*[!0-9]*) _minor=0 ;; esac
   case "$_patch" in ""|*[!0-9]*) _patch=0 ;; esac
+  case "${_rest:-}" in
+    "") _rest= ;;
+    *[!0-9]*) ;;
+    *) _rest=$(printf '%010d' "$((10#$_rest))") ;;
+  esac
   printf '%010d.%010d.%010d.%s\n' "$((10#$_major))" "$((10#$_minor))" "$((10#$_patch))" "${_rest:-}"
 }
 

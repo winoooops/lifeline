@@ -10,7 +10,9 @@ Pure mode runs the loop entirely inside Claude — no external grader, no codex 
 
 Resolution is **inline** here (not via the resolver script) for the same reason `paired-mode.md` inlines it: when the skill runs as an installed plugin in a target repo, `$REPO_ROOT/skills/deliver/scripts/resolve-skill-dir.sh` does not exist — the skill files live in the plugin cache. Without `$SKILL_DIR`, the per-iteration `Read` of `references/continuation.md` would silently miss the file and pure mode would loop without the audit checklist.
 
-Pure mode does **not** use a `$SCRATCH` directory — there are no per-iteration artifacts to write (that's a paired-mode-only concern, where grader JSON / event logs / render inputs accumulate).
+Pure mode uses a `$SCRATCH` directory only for code-rendered prompt templates.
+It does not store grader JSON, event logs, or evidence inputs. The scratch
+directory is deleted on success and on budget-limited wrap-up.
 
 ```bash
 # Resolve the deliver skill dir. Order: env override, plugin cache.
@@ -44,6 +46,11 @@ version_key() {
   case "$_major" in ""|*[!0-9]*) _major=0 ;; esac
   case "$_minor" in ""|*[!0-9]*) _minor=0 ;; esac
   case "$_patch" in ""|*[!0-9]*) _patch=0 ;; esac
+  case "${_rest:-}" in
+    "") _rest= ;;
+    *[!0-9]*) ;;
+    *) _rest=$(printf '%010d' "$((10#$_rest))") ;;
+  esac
   printf '%010d.%010d.%010d.%s\n' "$((10#$_major))" "$((10#$_minor))" "$((10#$_patch))" "${_rest:-}"
 }
 # Validity sentinel is `schemas/grader-output.json` for consistency with
@@ -86,6 +93,8 @@ fi
 
 [ -f "$SKILL_DIR/references/continuation.md" ] || { echo "ERROR: continuation.md not found at $SKILL_DIR/references/continuation.md" >&2; exit 1; }
 [ -f "$SKILL_DIR/references/budget_limit.md" ] || { echo "ERROR: budget_limit.md not found at $SKILL_DIR/references/budget_limit.md" >&2; exit 1; }
+RENDER_TEMPLATE="$SKILL_DIR/scripts/render-template.sh"
+[ -x "$RENDER_TEMPLATE" ] || { echo "ERROR: render-template.sh not executable at $RENDER_TEMPLATE" >&2; exit 1; }
 
 # Paste the objective exactly as parsed in SKILL.md Step 0. Replace the
 # single-quoted placeholder below with the exact objective as a Bash
@@ -98,21 +107,21 @@ if [ "$OBJECTIVE_RAW" = "__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__" ]; then
   exit 1
 fi
 OBJECTIVE_HTML=$(printf '%s' "$OBJECTIVE_RAW" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
-# Delimiter contains literal angle brackets; OBJECTIVE_HTML cannot,
-# because Step 1 escaped every `<` and `>` in the objective.
-OBJECTIVE_HTML_DELIM="LIFELINE_OBJECTIVE_HTML<$(date +%s):$$>"
+SCRATCH=$(mktemp -d -t lifeline-deliver-pure-XXXXXX)
+OBJECTIVE_HTML_FILE="$SCRATCH/objective.html"
+printf '%s' "$OBJECTIVE_HTML" > "$OBJECTIVE_HTML_FILE" || { echo "ERROR: failed to write objective HTML at $OBJECTIVE_HTML_FILE" >&2; exit 1; }
 
 ITER=0   # explicit initial value; echoed so the first loop has the
          # same mechanical counter handoff as subsequent Step 2d echoes.
 
+echo "SCRATCH=$SCRATCH"
 echo "SKILL_DIR=$SKILL_DIR"
+echo "RENDER_TEMPLATE=$RENDER_TEMPLATE"
+echo "OBJECTIVE_HTML_FILE=$OBJECTIVE_HTML_FILE"
 echo "ITER=$ITER"
-printf 'OBJECTIVE_HTML<<%s\n' "$OBJECTIVE_HTML_DELIM"
-printf '%s\n' "$OBJECTIVE_HTML"
-printf '%s\n' "$OBJECTIVE_HTML_DELIM"
 ```
 
-Capture `SKILL_DIR`, `ITER`, and the heredoc-style `OBJECTIVE_HTML` block from this call's stdout. Use `SKILL_DIR` as a literal path in every subsequent Bash call (including the per-iteration `Read` calls for `continuation.md` and `budget_limit.md`). Use the captured `OBJECTIVE_HTML` value for every `{{ objective }}` substitution; do not substitute the raw `$OBJECTIVE` into a prompt wrapper. Use the captured `ITER` as the source of truth for loop placeholders and budget checks until Step 2d echoes the next value. `$SKILL_DIR` is read-only — pure mode never writes inside the skill dir.
+Capture `SCRATCH`, `SKILL_DIR`, `RENDER_TEMPLATE`, `OBJECTIVE_HTML_FILE`, and `ITER` from this call's stdout. Use those literal values in every subsequent Bash call. Do not substitute `{{ objective }}` manually; every continuation and budget-limit prompt must be rendered through `RENDER_TEMPLATE`, which reads the code-generated `OBJECTIVE_HTML_FILE`. Use the captured `ITER` as the source of truth for loop placeholders and budget checks until Step 2d echoes the next value. `$SKILL_DIR` is read-only — pure mode writes only inside `$SCRATCH`.
 
 If `$SKILL_DIR` is empty, **report a startup error and stop**. Continuing without it would mean every iteration silently fails to load the audit checklist.
 
@@ -122,14 +131,34 @@ While `ITER < CAP`:
 
 ### 2a. Read continuation template
 
-Read `$SKILL_DIR/references/continuation.md` (the literal path you captured in Step 1). Substitute placeholders in your reasoning context:
+Render the continuation template into `$SCRATCH`, then read the rendered file. Rehydrate the captured values literally:
 
-- `{{ objective }}` → captured `OBJECTIVE_HTML` from Step 1. It is already HTML-escaped (`&` → `&amp;`, `<` → `&lt;`, `>` → `&gt;`) so a literal `</untrusted_objective>` inside the user's objective stays data and cannot close the wrapper in `continuation.md`
-- `{{ iter_used }}` → current `$ITER` (from Step 1's `ITER=0` echo for the first loop, then from the previous Step 2d echo)
-- `{{ iter_budget }}` → `$CAP`
-- `{{ iter_remaining }}` → `$((CAP - ITER))`
+```bash
+ITER=<paste the literal ITER value from Step 1 or the previous Step 2d echo, e.g. ITER=0 or ITER=2>
+CAP=<paste the literal CAP value from SKILL.md Step 0, e.g. CAP=20>
+SCRATCH=<paste the literal SCRATCH value from Step 1>
+SKILL_DIR=<paste the literal SKILL_DIR value from Step 1>
+RENDER_TEMPLATE=<paste the literal RENDER_TEMPLATE value from Step 1>
+OBJECTIVE_HTML_FILE=<paste the literal OBJECTIVE_HTML_FILE value from Step 1>
+: "${ITER:?ITER must be rehydrated before rendering continuation.md}"
+: "${CAP:?CAP must be rehydrated from SKILL.md Step 0}"
+: "${SCRATCH:?SCRATCH must be rehydrated from Step 1 echo}"
+: "${SKILL_DIR:?SKILL_DIR must be rehydrated from Step 1 echo}"
+: "${RENDER_TEMPLATE:?RENDER_TEMPLATE must be rehydrated from Step 1 echo}"
+: "${OBJECTIVE_HTML_FILE:?OBJECTIVE_HTML_FILE must be rehydrated from Step 1 echo}"
 
-The continuation prompt is the audit checklist you must apply this iteration. Keep it in your reasoning context until 2c.
+CONTINUATION_RENDERED="$SCRATCH/continuation-$ITER.rendered"
+"$RENDER_TEMPLATE" \
+  "$SKILL_DIR/references/continuation.md" \
+  "$OBJECTIVE_HTML_FILE" \
+  "$CONTINUATION_RENDERED" \
+  --iter-used "$ITER" \
+  --iter-budget "$CAP" \
+  --iter-remaining "$((CAP - ITER))" || exit 1
+echo "CONTINUATION_RENDERED=$CONTINUATION_RENDERED"
+```
+
+Read the rendered file path printed after `CONTINUATION_RENDERED=`. Do not read `continuation.md` directly and do not perform in-context placeholder substitution. The rendered continuation prompt is the audit checklist you must apply this iteration. Keep it in your reasoning context until 2c.
 
 ### 2b. Take the next concrete action
 
@@ -157,7 +186,7 @@ ITER=$((ITER + 1))
 echo "ITER=$ITER"
 ```
 
-Capture the printed `ITER`. If `ITER < CAP`, loop back to 2a and use that captured value for `{{ iter_used }}` and `{{ iter_remaining }}`.
+Capture the printed `ITER`. If `ITER < CAP`, loop back to 2a and use that captured value when rendering the next continuation prompt.
 
 ## Step 3: Final report
 
@@ -177,13 +206,20 @@ Capture the value after `ELAPSED=` for the `<MINS>m <SECS>s` placeholders.
 
 ### Success path
 
-When the audit returns complete, compute the success-only iteration count, then stop emitting tool calls and emit:
+When the audit returns complete, compute the success-only iteration count, delete the pure-mode scratch directory, then stop emitting tool calls and emit:
 
 ```bash
 ITER=<paste the literal ITER value from Step 1 or the previous Step 2d echo>
+SCRATCH=<paste the literal SCRATCH value from Step 1>
 : "${ITER:?ITER must be rehydrated before computing the success report}"
+: "${SCRATCH:?SCRATCH must be rehydrated before cleanup}"
 SUCCESS_ITERATIONS=$((ITER + 1))
 echo "SUCCESS_ITERATIONS=$SUCCESS_ITERATIONS"
+if [[ -n "$SCRATCH" && "$SCRATCH" == *"/lifeline-deliver-pure-"* ]]; then
+  rm -rf "$SCRATCH"
+else
+  echo "WARN: $SCRATCH does not contain '/lifeline-deliver-pure-' — skipping cleanup to avoid destroying the wrong path." >&2
+fi
 ```
 
 Capture the value after `SUCCESS_ITERATIONS=` for the success report.
@@ -200,7 +236,45 @@ evidence_checked:
 
 ### Budget-limited path
 
-When `ITER == CAP` without a complete verdict, read `$SKILL_DIR/references/budget_limit.md` (the literal path you captured in Step 1), substitute only the placeholders that file contains (`{{ objective }}` → captured `OBJECTIVE_HTML`, `{{ iter_used }}` → current `$ITER` which equals `$CAP`, `{{ iter_budget }}` → `$CAP`), and use it for one wrap-up turn. Then emit:
+When `ITER == CAP` without a complete verdict, render `$SKILL_DIR/references/budget_limit.md` through the same code path and use the rendered file for one wrap-up turn. The renderer supplies `{{ objective }}` from `OBJECTIVE_HTML_FILE`, `{{ iter_used }}` from `ITER`, and `{{ iter_budget }}` from `CAP`:
+
+```bash
+ITER=<paste the literal ITER value from the final Step 2d echo; it must equal CAP>
+CAP=<paste the literal CAP value from SKILL.md Step 0, e.g. CAP=20>
+SCRATCH=<paste the literal SCRATCH value from Step 1>
+SKILL_DIR=<paste the literal SKILL_DIR value from Step 1>
+RENDER_TEMPLATE=<paste the literal RENDER_TEMPLATE value from Step 1>
+OBJECTIVE_HTML_FILE=<paste the literal OBJECTIVE_HTML_FILE value from Step 1>
+: "${ITER:?ITER must be rehydrated before rendering budget_limit.md}"
+: "${CAP:?CAP must be rehydrated from SKILL.md Step 0}"
+: "${SCRATCH:?SCRATCH must be rehydrated from Step 1 echo}"
+: "${SKILL_DIR:?SKILL_DIR must be rehydrated from Step 1 echo}"
+: "${RENDER_TEMPLATE:?RENDER_TEMPLATE must be rehydrated from Step 1 echo}"
+: "${OBJECTIVE_HTML_FILE:?OBJECTIVE_HTML_FILE must be rehydrated from Step 1 echo}"
+
+BUDGET_LIMIT_RENDERED="$SCRATCH/budget-limit.rendered"
+"$RENDER_TEMPLATE" \
+  "$SKILL_DIR/references/budget_limit.md" \
+  "$OBJECTIVE_HTML_FILE" \
+  "$BUDGET_LIMIT_RENDERED" \
+  --iter-used "$ITER" \
+  --iter-budget "$CAP" || exit 1
+echo "BUDGET_LIMIT_RENDERED=$BUDGET_LIMIT_RENDERED"
+```
+
+Read the rendered file path printed after `BUDGET_LIMIT_RENDERED=`. Do not read `budget_limit.md` directly and do not perform in-context placeholder substitution. After the wrap-up audit, delete the pure-mode scratch directory:
+
+```bash
+SCRATCH=<paste the literal SCRATCH value from Step 1>
+: "${SCRATCH:?SCRATCH must be rehydrated before cleanup}"
+if [[ -n "$SCRATCH" && "$SCRATCH" == *"/lifeline-deliver-pure-"* ]]; then
+  rm -rf "$SCRATCH"
+else
+  echo "WARN: $SCRATCH does not contain '/lifeline-deliver-pure-' — skipping cleanup to avoid destroying the wrong path." >&2
+fi
+```
+
+Then emit:
 
 ```
 Deliveries halted at iteration cap (<MINS>m <SECS>s elapsed).
@@ -212,7 +286,7 @@ missing_requirements:
   - <each item from the wrap-up audit>
 ```
 
-(Pure mode doesn't write per-iteration artifacts to `$SCRATCH` — that's a paired-mode-only directory used for grader JSON, event logs, and render inputs. Don't reference `$SCRATCH` in the pure-mode budget_limited report; it would always be empty. Pure mode also doesn't *create* a scratch dir, so there is nothing to clean up or preserve on either exit path.)
+(Pure mode uses `$SCRATCH` only for rendered prompt templates. Do not reference `$SCRATCH` in the pure-mode budget_limited report after cleanup.)
 
 ## Error handling
 

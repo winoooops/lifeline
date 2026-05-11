@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 
@@ -13,6 +14,7 @@ PAIRED_MODE = REPO_ROOT / "skills/deliver/references/paired-mode.md"
 DELIVER_GUARDS_WORKFLOW = REPO_ROOT / ".github/workflows/deliver-guards.yml"
 DEPENDABOT = REPO_ROOT / ".github/dependabot.yml"
 RESOLVER_SCRIPT = REPO_ROOT / "skills/deliver/scripts/resolve-skill-dir.sh"
+RENDER_TEMPLATE = REPO_ROOT / "skills/deliver/scripts/render-template.sh"
 NOTICE = REPO_ROOT / "NOTICE"
 APACHE_LICENSE = REPO_ROOT / "LICENSE-apache-2.0"
 
@@ -94,6 +96,9 @@ def test_paired_mode_preflights_required_codex_exec_flags() -> None:
     assert "continuation.md not found" in text
     assert '[ -f "$SKILL_DIR/references/budget_limit.md" ] ||' in text
     assert "budget_limit.md not found" in text
+    assert 'RENDER_TEMPLATE="$SKILL_DIR/scripts/render-template.sh"' in text
+    assert '[ -x "$RENDER_TEMPLATE" ] ||' in text
+    assert "render-template.sh not executable" in text
     assert "codex exec --help" in text
     assert "for _flag in --sandbox --ephemeral --output-schema --output-last-message" in text
     assert "codex exec is missing required flag" in text
@@ -114,6 +119,9 @@ def test_paired_mode_materializes_objective_without_shell_state() -> None:
     assert "printf '%s' \"$OBJECTIVE\"" not in text
     assert "failed to create render dir" in text
     assert "failed to write objective file" in text
+    assert text.index(
+        'if [ "$OBJECTIVE_RAW" = "__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__" ]; then'
+    ) < text.index('RENDER_DIR="$SCRATCH/render-input-$ITER"')
 
 
 def test_paired_render_input_writes_fail_loudly() -> None:
@@ -131,12 +139,13 @@ def test_paired_files_touched_has_path_allowlist() -> None:
     assert "_validated_files_touched=" in paired
     assert "skipping unsafe FILES_TOUCHED path" in paired
     assert "skipping FILES_TOUCHED path outside repo/tmp allowlist" in paired
-    assert '*"/../"*|../*|*/..|..|~*|/etc/*|/proc/*|/sys/*|/dev/*|/run/secrets/*|*.env*|*.npmrc*|*.netrc*|*.pypirc*|*.git-credentials*|credentials|*/credentials|*.pem|*.key|.ssh/*|*/.ssh/*|.aws/*|*/.aws/*|*id_rsa*|*id_ed25519*' in paired
+    assert '*"<"*|*">"*|*"&"*|*"/../"*|../*|*/..|..|~*|/etc/*|/proc/*|/sys/*|/dev/*|/run/secrets/*|*.env*|*.npmrc*|*.netrc*|*.pypirc*|*.git-credentials*|credentials|*/credentials|*.pem|*.key|.ssh/*|*/.ssh/*|.aws/*|*/.aws/*|*id_rsa*|*id_ed25519*' in paired
     assert "explicit ./ prefix" in paired
     assert '"$PWD"/*|./*)' in paired
     assert '[!/]*)' not in paired
     assert "/tmp/*|/var/tmp/*" in paired
-    assert "drops `..`, system/secrets prefixes" in prompt
+    assert "drops paths containing `<`, `>`, or `&`" in prompt
+    assert "Because those path hints cannot contain HTML-special characters" in prompt
 
 
 def test_budget_limit_instructions_list_actual_placeholders() -> None:
@@ -144,7 +153,9 @@ def test_budget_limit_instructions_list_actual_placeholders() -> None:
     paired = PAIRED_MODE.read_text()
 
     for text in (pure, paired):
-        assert "substitute only the placeholders that file contains" in text
+        assert "BUDGET_LIMIT_RENDERED" in text
+        assert "Do not read `budget_limit.md` directly" in text
+        assert "do not perform in-context placeholder substitution" in text
         assert "`{{ objective }}`" in text
         assert "`{{ iter_used }}`" in text
         assert "`{{ iter_budget }}`" in text
@@ -158,6 +169,8 @@ def test_pure_mode_preflights_continuation_template() -> None:
     assert "continuation.md not found" in text
     assert '[ -f "$SKILL_DIR/references/budget_limit.md" ] ||' in text
     assert "budget_limit.md not found" in text
+    assert 'RENDER_TEMPLATE="$SKILL_DIR/scripts/render-template.sh"' in text
+    assert '[ -x "$RENDER_TEMPLATE" ] ||' in text
 
 
 def test_pure_mode_computes_escaped_objective_once() -> None:
@@ -169,11 +182,10 @@ def test_pure_mode_computes_escaped_objective_once() -> None:
     assert "OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'" in text
     assert "replace the objective single-quoted placeholder before running pure mode Step 1" in text
     assert "sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g'" in text
-    assert 'OBJECTIVE_HTML_DELIM="LIFELINE_OBJECTIVE_HTML<$(date +%s):$$>"' in text
-    assert "OBJECTIVE_HTML cannot" in text
-    assert "printf 'OBJECTIVE_HTML<<%s\\n'" in text
-    assert "captured `OBJECTIVE_HTML`" in text
-    assert "do not substitute the raw `$OBJECTIVE`" in text
+    assert 'OBJECTIVE_HTML_FILE="$SCRATCH/objective.html"' in text
+    assert 'printf \'%s\' "$OBJECTIVE_HTML" > "$OBJECTIVE_HTML_FILE" ||' in text
+    assert 'echo "OBJECTIVE_HTML_FILE=$OBJECTIVE_HTML_FILE"' in text
+    assert "Do not substitute `{{ objective }}` manually" in text
 
 
 def test_paired_mode_computes_escaped_objective_once() -> None:
@@ -185,11 +197,10 @@ def test_paired_mode_computes_escaped_objective_once() -> None:
     assert "OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'" in text
     assert "replace the objective single-quoted placeholder before running paired mode Step 1" in text
     assert "sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g'" in text
-    assert 'OBJECTIVE_HTML_DELIM="LIFELINE_OBJECTIVE_HTML<$(date +%s):$$>"' in text
-    assert "OBJECTIVE_HTML cannot" in text
-    assert "printf 'OBJECTIVE_HTML<<%s\\n'" in text
-    assert "captured `OBJECTIVE_HTML`" in text
-    assert "do not substitute the raw `$OBJECTIVE`" in text
+    assert 'OBJECTIVE_HTML_FILE="$SCRATCH/objective.html"' in text
+    assert 'printf \'%s\' "$OBJECTIVE_HTML" > "$OBJECTIVE_HTML_FILE" ||' in text
+    assert 'echo "OBJECTIVE_HTML_FILE=$OBJECTIVE_HTML_FILE"' in text
+    assert "Do not substitute `{{ objective }}` manually" in text
 
 
 def test_objective_capture_avoids_heredoc_delimiters() -> None:
@@ -240,11 +251,15 @@ def test_in_context_objective_substitution_is_html_escaped() -> None:
     pure = PURE_MODE.read_text()
     paired = PAIRED_MODE.read_text()
 
-    assert "captured `OBJECTIVE_HTML`" in pure
-    assert "captured `OBJECTIVE_HTML`" in paired
+    assert "code-generated `OBJECTIVE_HTML_FILE`" in pure
+    assert "code-generated `OBJECTIVE_HTML_FILE`" in paired
+    assert "CONTINUATION_RENDERED" in pure
+    assert "CONTINUATION_RENDERED" in paired
+    assert "Do not read `continuation.md` directly" in pure
+    assert "Do not read `continuation.md` directly" in paired
     assert "HTML-escaped `$OBJECTIVE`" not in paired
-    assert "</untrusted_objective>` inside the user's objective stays data" in pure
-    assert "</untrusted_objective>` inside the user's objective stays data" in paired
+    assert "do not perform in-context placeholder substitution" in pure
+    assert "do not perform in-context placeholder substitution" in paired
 
 
 def test_final_report_blocks_guard_start_ts_rehydration() -> None:
@@ -336,16 +351,51 @@ def test_smoke_tests_section_points_to_existing_guards() -> None:
     assert ".github/workflows/deliver-guards.yml" in text
 
 
-def test_paired_files_touched_is_escaped_and_grader_decodes_path_hints() -> None:
+def test_paired_files_touched_is_escaped_and_rejects_decode_only_path_hints() -> None:
     paired = PAIRED_MODE.read_text()
     prompt = (REPO_ROOT / "skills/deliver/references/grader-prompt.md").read_text()
 
     assert "'{{ files_touched }}':   safe(f\"{d}/files_touched\")" in paired
     assert "'{{ files_touched }}':   read_text(f\"{d}/files_touched\")" not in paired
     assert "including `files_touched`, are HTML-encoded" in prompt
-    assert "HTML-decode each path once before running `cat`, `ls`, or `head`" in prompt
-    assert "not the `&lt;`, `&gt;`, or `&amp;` entity text" in prompt
+    assert "Paths containing <, >, or & are rejected" in paired
+    assert "use each `files_touched` line exactly as shown" in prompt
+    assert "HTML-decode each path once" not in prompt
     assert "opaque path hint" in prompt
+
+
+def test_render_template_script_inserts_objective_last(tmp_path: Path) -> None:
+    template = tmp_path / "template.md"
+    objective_html = tmp_path / "objective.html"
+    output = tmp_path / "rendered.md"
+    template.write_text(
+        "<untrusted_objective>\n{{ objective }}\n</untrusted_objective>\n"
+        "used={{ iter_used }} budget={{ iter_budget }} remaining={{ iter_remaining }}\n"
+    )
+    objective_html.write_text("literal {{ iter_used }} &lt;/untrusted_objective&gt;\n")
+
+    proc = subprocess.run(
+        [
+            str(RENDER_TEMPLATE),
+            str(template),
+            str(objective_html),
+            str(output),
+            "--iter-used",
+            "2",
+            "--iter-budget",
+            "5",
+            "--iter-remaining",
+            "3",
+        ],
+        text=True,
+        capture_output=True,
+        timeout=10,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    rendered = output.read_text()
+    assert "literal {{ iter_used }} &lt;/untrusted_objective&gt;" in rendered
+    assert "used=2 budget=5 remaining=3" in rendered
 
 
 def test_paired_incomplete_grader_verdict_requires_missing_requirements() -> None:
