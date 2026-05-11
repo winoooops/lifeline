@@ -242,7 +242,8 @@ GIT_STATUS=$(git status --short 2>/dev/null || true)
 FILES_TOUCHED=""   # leave empty by default; if your objective is out-of-repo
                    # (paths the grader needs to cat/ls — e.g. /tmp/lifeline-out.html),
                    # set this to a newline-separated list of those paths so
-                   # the grader knows where to inspect. Only repo-relative,
+                   # the grader knows where to inspect. Repo-relative paths
+                   # must use an explicit ./ prefix. Only repo-relative,
                    # repo-absolute, /tmp, and /var/tmp paths survive the
                    # validation below. The grader treats empty `files_touched`
                    # as "no orientation hint, fall back to git evidence."
@@ -319,7 +320,7 @@ while IFS= read -r _path || [ -n "$_path" ]; do
       ;;
   esac
   case "$_path" in
-    "$PWD"/*|./*|[!/]*) ;;
+    "$PWD"/*|./*) ;;
     /tmp/*|/var/tmp/*) ;;
     *)
       echo "WARN: skipping FILES_TOUCHED path outside repo/tmp allowlist: $_path" >&2
@@ -557,6 +558,7 @@ else
   echo "WARN: codex grader unusable this iteration (consecutive=$GRADER_UNUSABLE_STREAK/3); see $SCRATCH/grader-$ITER.{stderr.log,events.log,render-stderr}" >&2
   if [ "$GRADER_UNUSABLE_STREAK" -ge 3 ]; then
     echo "ERROR: codex grader unusable for $GRADER_UNUSABLE_STREAK consecutive iterations; stopping instead of silently degrading paired mode to self-audit." >&2
+    echo "VERDICT=hard_error (grader_unusable_streak=$GRADER_UNUSABLE_STREAK)"
     echo "scratch_dir: $SCRATCH"
     exit 1
   fi

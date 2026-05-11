@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -10,6 +11,8 @@ SKILL = REPO_ROOT / "skills/deliver/SKILL.md"
 PURE_MODE = REPO_ROOT / "skills/deliver/references/pure-mode.md"
 PAIRED_MODE = REPO_ROOT / "skills/deliver/references/paired-mode.md"
 DELIVER_GUARDS_WORKFLOW = REPO_ROOT / ".github/workflows/deliver-guards.yml"
+CLAUDE_REVIEW_WORKFLOW = REPO_ROOT / ".github/workflows/claude-review.yml"
+DEPENDABOT = REPO_ROOT / ".github/dependabot.yml"
 RESOLVER_SCRIPT = REPO_ROOT / "skills/deliver/scripts/resolve-skill-dir.sh"
 NOTICE = REPO_ROOT / "NOTICE"
 APACHE_LICENSE = REPO_ROOT / "LICENSE-apache-2.0"
@@ -130,7 +133,9 @@ def test_paired_files_touched_has_path_allowlist() -> None:
     assert "skipping unsafe FILES_TOUCHED path" in paired
     assert "skipping FILES_TOUCHED path outside repo/tmp allowlist" in paired
     assert '*"/../"*|../*|*/..|..|~*|/etc/*|/proc/*|/sys/*|/dev/*|/run/secrets/*|*.env*|*.npmrc*|*.netrc*|*.pypirc*|*.git-credentials*|credentials|*/credentials|*.pem|*.key|.ssh/*|*/.ssh/*|.aws/*|*/.aws/*|*id_rsa*|*id_ed25519*' in paired
-    assert '"$PWD"/*|./*|[!/]*)' in paired
+    assert "explicit ./ prefix" in paired
+    assert '"$PWD"/*|./*)' in paired
+    assert '[!/]*)' not in paired
     assert "/tmp/*|/var/tmp/*" in paired
     assert "drops `..`, system/secrets prefixes" in prompt
 
@@ -211,6 +216,7 @@ def test_paired_mode_uses_timeout_command_array() -> None:
 def test_grader_unusable_hard_error_prints_scratch_dir_to_stdout() -> None:
     text = PAIRED_MODE.read_text()
 
+    assert 'echo "VERDICT=hard_error (grader_unusable_streak=$GRADER_UNUSABLE_STREAK)"' in text
     assert 'echo "scratch_dir: $SCRATCH"' in text
     assert 'echo "scratch_dir: $SCRATCH" >&2' not in text
 
@@ -257,6 +263,23 @@ def test_deliver_guard_workflow_uses_read_only_permissions() -> None:
     text = DELIVER_GUARDS_WORKFLOW.read_text()
 
     assert "\npermissions:\n  contents: read\n" in text
+
+
+def test_github_actions_are_sha_pinned_and_dependabot_tracks_updates() -> None:
+    uses_pattern = re.compile(r"uses:\s+[^@\s]+@([0-9A-Za-z._/-]+)")
+
+    for path in (DELIVER_GUARDS_WORKFLOW, CLAUDE_REVIEW_WORKFLOW):
+        text = path.read_text()
+        refs = uses_pattern.findall(text)
+        assert refs, f"{path} should contain GitHub Actions uses entries"
+        for ref in refs:
+            assert re.fullmatch(r"[0-9a-f]{40}", ref), (
+                f"{path} contains an unpinned action ref: {ref}"
+            )
+
+    dependabot = DEPENDABOT.read_text()
+    assert 'package-ecosystem: "github-actions"' in dependabot
+    assert 'directory: "/"' in dependabot
 
 
 def test_resolver_mirrors_have_explicit_boundary_sentinels() -> None:
