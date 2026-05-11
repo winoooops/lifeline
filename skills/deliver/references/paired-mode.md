@@ -248,6 +248,7 @@ for _f in "${UNTRACKED_INCLUDE[@]}"; do
     GIT_DIFF_HEAD+=$'\n'"--- skipped (unreadable): $_f"$'\n'
     continue
   fi
+  _sz=$(printf '%s' "$_sz" | tr -d '[:space:]')
   if [ "$_sz" -gt "$_MAX_UNTRACKED_BYTES" ]; then
     GIT_DIFF_HEAD+=$'\n'"--- skipped (>${_MAX_UNTRACKED_BYTES}B): $_f"$'\n'
     continue
@@ -293,6 +294,10 @@ fi
 cat > "$RENDER_DIR/objective" <<'__OBJECTIVE_DELIM_PLACEHOLDER__'
 <paste the exact OBJECTIVE from SKILL.md Step 0>
 __OBJECTIVE_DELIM_PLACEHOLDER__
+if grep -qF '<paste the exact OBJECTIVE from SKILL.md Step 0>' "$RENDER_DIR/objective"; then
+  echo "ERROR: objective placeholder was not replaced before running paired mode Step 2c." >&2
+  exit 1
+fi
 printf '%s' "$GIT_DIFF_HEAD"  > "$RENDER_DIR/git_diff_head"
 printf '%s' "$UNTRACKED"      > "$RENDER_DIR/untracked"
 printf '%s' "$GIT_STATUS"     > "$RENDER_DIR/git_status"

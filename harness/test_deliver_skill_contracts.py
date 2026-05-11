@@ -54,6 +54,7 @@ def test_paired_untracked_evidence_has_file_and_total_caps() -> None:
     assert "_total_untracked_bytes=0" in text
     assert "UNTRACKED_INCLUDE total would exceed" in text
     assert "remaining files omitted" in text
+    assert "_sz=$(printf '%s' \"$_sz\" | tr -d '[:space:]')" in text
 
 
 def test_paired_git_diff_head_has_size_cap() -> None:
@@ -82,6 +83,8 @@ def test_paired_mode_materializes_objective_without_shell_state() -> None:
     assert "comparison string unchanged" in text
     assert "unchanged so it can catch a missed replacement" in text
     assert "cat > \"$RENDER_DIR/objective\" <<'__OBJECTIVE_DELIM_PLACEHOLDER__'" in text
+    assert "objective placeholder was not replaced before running paired mode Step 2c" in text
+    assert "grep -qF '<paste the exact OBJECTIVE from SKILL.md Step 0>'" in text
     assert "Do not rely" in text
     assert "$OBJECTIVE` shell variable" in text
     assert "LIFELINE_OBJECTIVE_RAW" not in text
@@ -104,6 +107,7 @@ def test_pure_mode_computes_escaped_objective_once() -> None:
     assert "guard comparison string" in text
     assert "unchanged so it can catch a missed replacement" in text
     assert "OBJECTIVE_RAW=$(cat <<'__OBJECTIVE_DELIM_PLACEHOLDER__'" in text
+    assert "objective placeholder was not replaced before running pure mode Step 1" in text
     assert "sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g'" in text
     assert "OBJECTIVE_HTML_DELIM=" in text
     assert "printf 'OBJECTIVE_HTML<<%s\\n'" in text

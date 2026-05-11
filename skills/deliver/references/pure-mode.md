@@ -86,6 +86,12 @@ OBJECTIVE_RAW=$(cat <<'__OBJECTIVE_DELIM_PLACEHOLDER__'
 <paste the exact OBJECTIVE from SKILL.md Step 0>
 __OBJECTIVE_DELIM_PLACEHOLDER__
 )
+case "$OBJECTIVE_RAW" in
+  *"<paste the exact OBJECTIVE from SKILL.md Step 0>"*)
+    echo "ERROR: objective placeholder was not replaced before running pure mode Step 1." >&2
+    exit 1
+    ;;
+esac
 OBJECTIVE_HTML=$(printf '%s' "$OBJECTIVE_RAW" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
 OBJECTIVE_HTML_DELIM="LIFELINE_OBJECTIVE_HTML_$(date +%s)_$$"
 
