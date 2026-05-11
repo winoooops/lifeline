@@ -190,7 +190,7 @@ d = os.environ['RENDER_DIR']
 # UnicodeDecodeError on non-ASCII bytes when LANG/LC_ALL isn't UTF-8
 # (minimal containers, some CI envs). All our evidence is text and
 # UTF-8 is the only sensible choice.
-template = open(os.environ['GRADER_TEMPLATE'], encoding='utf-8').read()
+template = open(os.environ['GRADER_TEMPLATE'], encoding='utf-8', errors='replace').read()
 
 # HTML-escape every evidence value before substitution. Without this, a
 # value containing `</untrusted_objective>` (or any of the other
@@ -358,6 +358,8 @@ fi
 ```
 
 Carry `VERDICT_SOURCE` ("grader" or "self-audit-fallback") forward to Step 3 — the success report needs it to decide where evidence comes from.
+
+**If `VERDICT` is `complete`, proceed directly to Step 3 (success path) — do not execute Step 2d.** Only continue to 2d when the verdict was `incomplete` or `grader_unusable` (fallback). Without this jump, the loop would over-iterate even on a complete verdict, eventually misreporting `budget_limited` on an objective the grader already passed.
 
 ### 2d. Increment
 
