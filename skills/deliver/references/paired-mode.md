@@ -73,28 +73,19 @@ fi
 
 SCHEMA_PATH="$SKILL_DIR/schemas/grader-output.json"
 GRADER_TEMPLATE="$SKILL_DIR/references/grader-prompt.md"
+[ -f "$SCHEMA_PATH" ] || { echo "ERROR: grader schema not found at $SCHEMA_PATH" >&2; exit 1; }
 [ -f "$GRADER_TEMPLATE" ] || { echo "ERROR: grader template not found at $GRADER_TEMPLATE" >&2; exit 1; }
 
-# Paste the objective exactly as parsed in SKILL.md Step 0. Before
-# running this block, replace the assignment value plus the opening and
-# closing here-doc delimiters with the same fresh token that does not
-# occur anywhere in the objective. Leave the guard comparison string
-# unchanged so it can catch a missed replacement.
-OBJECTIVE_DELIM="__OBJECTIVE_DELIM_PLACEHOLDER__"
-if [ "$OBJECTIVE_DELIM" = "__OBJECTIVE_DELIM_PLACEHOLDER__" ]; then
-  echo "ERROR: replace the objective delimiter placeholder before running paired mode Step 1." >&2
+# Paste the objective exactly as parsed in SKILL.md Step 0. Replace the
+# single-quoted placeholder below with the exact objective as a Bash
+# single-quoted literal. Single-quoted Bash strings may span lines;
+# escape every literal single quote in the objective as: '\''. Do not
+# use a here-doc; delimiter collisions can truncate objectives.
+OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'
+if [ "$OBJECTIVE_RAW" = "__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__" ]; then
+  echo "ERROR: replace the objective single-quoted placeholder before running paired mode Step 1." >&2
   exit 1
 fi
-OBJECTIVE_RAW=$(cat <<'__OBJECTIVE_DELIM_PLACEHOLDER__'
-<paste the exact OBJECTIVE from SKILL.md Step 0>
-__OBJECTIVE_DELIM_PLACEHOLDER__
-)
-case "$OBJECTIVE_RAW" in
-  *"<paste the exact OBJECTIVE from SKILL.md Step 0>"*)
-    echo "ERROR: objective placeholder was not replaced before running paired mode Step 1." >&2
-    exit 1
-    ;;
-esac
 OBJECTIVE_HTML=$(printf '%s' "$OBJECTIVE_RAW" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
 # Delimiter contains literal angle brackets; OBJECTIVE_HTML cannot,
 # because Step 1 escaped every `<` and `>` in the objective.
@@ -343,22 +334,16 @@ RENDER_DIR="$SCRATCH/render-input-$ITER"
 mkdir -p "$RENDER_DIR" || { echo "ERROR: failed to create render dir at $RENDER_DIR" >&2; exit 1; }
 # Paste the objective exactly as parsed in SKILL.md Step 0. Do not rely
 # on a `$OBJECTIVE` shell variable — Bash state does not persist between
-# tool calls. Before running this block, replace the assignment value
-# plus the opening and closing here-doc delimiters with the same fresh
-# token that does not occur anywhere in the objective. Leave the guard
-# comparison string unchanged so it can catch a missed replacement.
-OBJECTIVE_DELIM="__OBJECTIVE_DELIM_PLACEHOLDER__"
-if [ "$OBJECTIVE_DELIM" = "__OBJECTIVE_DELIM_PLACEHOLDER__" ]; then
-  echo "ERROR: replace the objective delimiter placeholder before running paired mode Step 2c." >&2
+# tool calls. Replace the single-quoted placeholder below with the exact
+# objective as a Bash single-quoted literal; escape every literal single
+# quote as: '\''. Do not use a here-doc; delimiter collisions can
+# truncate objectives.
+OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'
+if [ "$OBJECTIVE_RAW" = "__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__" ]; then
+  echo "ERROR: replace the objective single-quoted placeholder before running paired mode Step 2c." >&2
   exit 1
 fi
-cat > "$RENDER_DIR/objective" <<'__OBJECTIVE_DELIM_PLACEHOLDER__' || { echo "ERROR: failed to write objective file at $RENDER_DIR/objective" >&2; exit 1; }
-<paste the exact OBJECTIVE from SKILL.md Step 0>
-__OBJECTIVE_DELIM_PLACEHOLDER__
-if grep -qF '<paste the exact OBJECTIVE from SKILL.md Step 0>' "$RENDER_DIR/objective"; then
-  echo "ERROR: objective placeholder was not replaced before running paired mode Step 2c." >&2
-  exit 1
-fi
+printf '%s' "$OBJECTIVE_RAW" > "$RENDER_DIR/objective" || { echo "ERROR: failed to write objective file at $RENDER_DIR/objective" >&2; exit 1; }
 printf '%s' "$GIT_DIFF_HEAD" > "$RENDER_DIR/git_diff_head" || { echo "ERROR: failed to write render input git_diff_head at $RENDER_DIR/git_diff_head" >&2; exit 1; }
 printf '%s' "$UNTRACKED" > "$RENDER_DIR/untracked" || { echo "ERROR: failed to write render input untracked at $RENDER_DIR/untracked" >&2; exit 1; }
 printf '%s' "$GIT_STATUS" > "$RENDER_DIR/git_status" || { echo "ERROR: failed to write render input git_status at $RENDER_DIR/git_status" >&2; exit 1; }

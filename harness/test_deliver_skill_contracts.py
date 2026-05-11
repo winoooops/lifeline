@@ -87,6 +87,7 @@ def test_paired_git_diff_head_has_size_cap() -> None:
 def test_paired_mode_preflights_required_codex_exec_flags() -> None:
     text = PAIRED_MODE.read_text()
 
+    assert '[ -f "$SCHEMA_PATH" ] || { echo "ERROR: grader schema not found' in text
     assert "codex exec --help" in text
     assert "for _flag in --sandbox --ephemeral --output-schema --output-last-message" in text
     assert "codex exec is missing required flag" in text
@@ -95,13 +96,12 @@ def test_paired_mode_preflights_required_codex_exec_flags() -> None:
 def test_paired_mode_materializes_objective_without_shell_state() -> None:
     text = PAIRED_MODE.read_text()
 
-    assert 'OBJECTIVE_DELIM="__OBJECTIVE_DELIM_PLACEHOLDER__"' in text
-    assert "Leave the guard" in text
-    assert "comparison string unchanged" in text
-    assert "unchanged so it can catch a missed replacement" in text
-    assert "cat > \"$RENDER_DIR/objective\" <<'__OBJECTIVE_DELIM_PLACEHOLDER__'" in text
-    assert "objective placeholder was not replaced before running paired mode Step 2c" in text
-    assert "grep -qF '<paste the exact OBJECTIVE from SKILL.md Step 0>'" in text
+    assert "single-quoted literal" in text
+    assert "escape every literal single quote" in text
+    assert "use a here-doc" in text
+    assert "OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'" in text
+    assert "replace the objective single-quoted placeholder before running paired mode Step 2c" in text
+    assert "printf '%s' \"$OBJECTIVE_RAW\" > \"$RENDER_DIR/objective\"" in text
     assert "Do not rely" in text
     assert "$OBJECTIVE` shell variable" in text
     assert "LIFELINE_OBJECTIVE_RAW" not in text
@@ -155,11 +155,11 @@ def test_pure_mode_preflights_continuation_template() -> None:
 def test_pure_mode_computes_escaped_objective_once() -> None:
     text = PURE_MODE.read_text()
 
-    assert 'OBJECTIVE_DELIM="__OBJECTIVE_DELIM_PLACEHOLDER__"' in text
-    assert "guard comparison string" in text
-    assert "unchanged so it can catch a missed replacement" in text
-    assert "OBJECTIVE_RAW=$(cat <<'__OBJECTIVE_DELIM_PLACEHOLDER__'" in text
-    assert "objective placeholder was not replaced before running pure mode Step 1" in text
+    assert "single-quoted literal" in text
+    assert "escape every literal single quote" in text
+    assert "use a here-doc" in text
+    assert "OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'" in text
+    assert "replace the objective single-quoted placeholder before running pure mode Step 1" in text
     assert "sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g'" in text
     assert 'OBJECTIVE_HTML_DELIM="LIFELINE_OBJECTIVE_HTML<$(date +%s):$$>"' in text
     assert "OBJECTIVE_HTML cannot" in text
@@ -171,17 +171,28 @@ def test_pure_mode_computes_escaped_objective_once() -> None:
 def test_paired_mode_computes_escaped_objective_once() -> None:
     text = PAIRED_MODE.read_text()
 
-    assert 'OBJECTIVE_DELIM="__OBJECTIVE_DELIM_PLACEHOLDER__"' in text
-    assert "guard comparison string" in text
-    assert "unchanged so it can catch a missed replacement" in text
-    assert "OBJECTIVE_RAW=$(cat <<'__OBJECTIVE_DELIM_PLACEHOLDER__'" in text
-    assert "objective placeholder was not replaced before running paired mode Step 1" in text
+    assert "single-quoted literal" in text
+    assert "escape every literal single quote" in text
+    assert "use a here-doc" in text
+    assert "OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'" in text
+    assert "replace the objective single-quoted placeholder before running paired mode Step 1" in text
     assert "sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g'" in text
     assert 'OBJECTIVE_HTML_DELIM="LIFELINE_OBJECTIVE_HTML<$(date +%s):$$>"' in text
     assert "OBJECTIVE_HTML cannot" in text
     assert "printf 'OBJECTIVE_HTML<<%s\\n'" in text
     assert "captured `OBJECTIVE_HTML`" in text
     assert "do not substitute the raw `$OBJECTIVE`" in text
+
+
+def test_objective_capture_avoids_heredoc_delimiters() -> None:
+    pure = PURE_MODE.read_text()
+    paired = PAIRED_MODE.read_text()
+
+    for text in (pure, paired):
+        assert "OBJECTIVE_RAW=$(cat <<" not in text
+        assert "OBJECTIVE_DELIM" not in text
+        assert "__OBJECTIVE_DELIM_PLACEHOLDER__" not in text
+    assert 'cat > "$RENDER_DIR/objective" <<' not in paired
 
 
 def test_paired_mode_uses_timeout_command_array() -> None:

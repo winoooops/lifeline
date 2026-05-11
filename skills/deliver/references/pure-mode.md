@@ -72,26 +72,16 @@ fi
 [ -f "$SKILL_DIR/references/continuation.md" ] || { echo "ERROR: continuation.md not found at $SKILL_DIR/references/continuation.md" >&2; exit 1; }
 [ -f "$SKILL_DIR/references/budget_limit.md" ] || { echo "ERROR: budget_limit.md not found at $SKILL_DIR/references/budget_limit.md" >&2; exit 1; }
 
-# Paste the objective exactly as parsed in SKILL.md Step 0. Before
-# running this block, replace the assignment value plus the opening and
-# closing here-doc delimiters with the same fresh token that does not
-# occur anywhere in the objective. Leave the guard comparison string
-# unchanged so it can catch a missed replacement.
-OBJECTIVE_DELIM="__OBJECTIVE_DELIM_PLACEHOLDER__"
-if [ "$OBJECTIVE_DELIM" = "__OBJECTIVE_DELIM_PLACEHOLDER__" ]; then
-  echo "ERROR: replace the objective delimiter placeholder before running pure mode Step 1." >&2
+# Paste the objective exactly as parsed in SKILL.md Step 0. Replace the
+# single-quoted placeholder below with the exact objective as a Bash
+# single-quoted literal. Single-quoted Bash strings may span lines;
+# escape every literal single quote in the objective as: '\''. Do not
+# use a here-doc; delimiter collisions can truncate objectives.
+OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'
+if [ "$OBJECTIVE_RAW" = "__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__" ]; then
+  echo "ERROR: replace the objective single-quoted placeholder before running pure mode Step 1." >&2
   exit 1
 fi
-OBJECTIVE_RAW=$(cat <<'__OBJECTIVE_DELIM_PLACEHOLDER__'
-<paste the exact OBJECTIVE from SKILL.md Step 0>
-__OBJECTIVE_DELIM_PLACEHOLDER__
-)
-case "$OBJECTIVE_RAW" in
-  *"<paste the exact OBJECTIVE from SKILL.md Step 0>"*)
-    echo "ERROR: objective placeholder was not replaced before running pure mode Step 1." >&2
-    exit 1
-    ;;
-esac
 OBJECTIVE_HTML=$(printf '%s' "$OBJECTIVE_RAW" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
 # Delimiter contains literal angle brackets; OBJECTIVE_HTML cannot,
 # because Step 1 escaped every `<` and `>` in the objective.
