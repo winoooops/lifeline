@@ -6,14 +6,13 @@ Pure mode runs the loop entirely inside Claude — no external grader, no codex 
 
 > **Reminder — Bash state does not persist between tool calls.** Carry literal values (paths, timestamps) forward in your reasoning context and interpolate them as strings into every Bash call.
 
-## Step 1: Initialize scratch + resolve skill dir
+## Step 1: Resolve skill dir
 
 Resolution is **inline** here (not via the resolver script) for the same reason `paired-mode.md` inlines it: when the skill runs as an installed plugin in a target repo, `$REPO_ROOT/skills/deliver/scripts/resolve-skill-dir.sh` does not exist — the skill files live in the plugin cache. Without `$SKILL_DIR`, the per-iteration `Read` of `references/continuation.md` would silently miss the file and pure mode would loop without the audit checklist.
 
-```bash
-SCRATCH=$(mktemp -d -t lifeline-deliver-XXXXXX)
-echo "SCRATCH=$SCRATCH"
+Pure mode does **not** use a `$SCRATCH` directory — there are no per-iteration artifacts to write (that's a paired-mode-only concern, where grader JSON / event logs / render inputs accumulate).
 
+```bash
 # Resolve the deliver skill dir. Order: env override, plugin cache.
 #
 # **Workspace lookup is intentionally absent.** An earlier version of
@@ -31,7 +30,12 @@ echo "SCRATCH=$SCRATCH"
 # in their shell to make local edits effective without re-syncing the
 # plugin cache after every change.
 SKILL_DIR=""
-if [ -n "${LIFELINE_SKILL_DIR:-}" ] && [ -f "$LIFELINE_SKILL_DIR/references/continuation.md" ]; then
+# Validity sentinel is `schemas/grader-output.json` for consistency with
+# paired-mode.md and resolve-skill-dir.sh — the canonical "is this a
+# real deliver skill dir?" check across the codebase. Pure mode doesn't
+# use the schema itself, but a single sentinel everywhere means
+# LIFELINE_SKILL_DIR has the same accept/reject semantics in both modes.
+if [ -n "${LIFELINE_SKILL_DIR:-}" ] && [ -f "$LIFELINE_SKILL_DIR/schemas/grader-output.json" ]; then
   SKILL_DIR="$LIFELINE_SKILL_DIR"
 else
   _cache="$HOME/.claude/plugins/cache/lifeline/lifeline"
@@ -39,7 +43,7 @@ else
     # Newest-installed wins. Use mtime ordering (portable) instead of
     # `sort -V` which is GNU-only and missing on default macOS/BSD.
     _latest=$(ls -1t "$_cache" 2>/dev/null | head -1)
-    if [ -n "$_latest" ] && [ -f "$_cache/$_latest/skills/deliver/references/continuation.md" ]; then
+    if [ -n "$_latest" ] && [ -f "$_cache/$_latest/skills/deliver/schemas/grader-output.json" ]; then
       SKILL_DIR="$_cache/$_latest/skills/deliver"
     fi
   fi
@@ -53,7 +57,7 @@ fi
 echo "SKILL_DIR=$SKILL_DIR"
 ```
 
-Capture both `SCRATCH` and `SKILL_DIR` from this call's stdout and use them as literal paths in every subsequent Bash call (including the per-iteration `Read` calls for `continuation.md` and `budget_limit.md`). `$SCRATCH` cleans up on success and is preserved on `budget_limited`; `$SKILL_DIR` is read-only — pure mode never writes inside the skill dir.
+Capture `SKILL_DIR` from this call's stdout and use it as a literal path in every subsequent Bash call (including the per-iteration `Read` calls for `continuation.md` and `budget_limit.md`). `$SKILL_DIR` is read-only — pure mode never writes inside the skill dir.
 
 If `$SKILL_DIR` is empty, **report a startup error and stop**. Continuing without it would mean every iteration silently fails to load the audit checklist.
 
@@ -120,12 +124,6 @@ evidence_checked:
   - <each item from your audit notes>
 ```
 
-Then clean up the scratch dir:
-
-```bash
-rm -rf "$SCRATCH"
-```
-
 ### Budget-limited path
 
 When `ITER == CAP` without a complete verdict, read `$SKILL_DIR/references/budget_limit.md` (the literal path you captured in Step 1), substitute the same placeholders as 2a, and use it for one wrap-up turn. Then emit:
@@ -138,9 +136,9 @@ iterations: <CAP>
 elapsed: <MINS>m <SECS>s
 missing_requirements:
   - <each item from the wrap-up audit>
-scratch_dir: <SCRATCH path>
-note: scratch dir preserved for postmortem inspection
 ```
+
+(Pure mode doesn't write per-iteration artifacts to `$SCRATCH` — that's a paired-mode-only directory used for grader JSON, event logs, and render inputs. Don't reference `$SCRATCH` in the pure-mode budget_limited report; it would always be empty.)
 
 **Do not delete `$SCRATCH`** on `budget_limited`.
 

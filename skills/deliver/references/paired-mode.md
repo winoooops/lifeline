@@ -208,9 +208,10 @@ then : ; fi
 # grader would judge against nothing — silently losing the iteration's
 # evidence and likely returning complete=false (or worse, complete=true
 # on a vacuous prompt).
+RENDER_FAILED=0
 if [ ! -s "$PROMPT_FILE" ]; then
   echo "WARN: grader prompt rendering failed (python3 unavailable, template missing, or render error). See $SCRATCH/grader-$ITER.render-stderr." >&2
-  CODEX_EXIT=99   # synthetic — routes through the grader-fallback branch below
+  RENDER_FAILED=1
 fi
 
 # GNU `timeout` is optional on some systems (BSD/macOS without coreutils,
@@ -222,7 +223,7 @@ else
   TIMEOUT_PREFIX=""
 fi
 
-if [ "${CODEX_EXIT:-0}" -ne 99 ]; then
+if [ "$RENDER_FAILED" -eq 0 ]; then
   # Pass the prompt via stdin (`- ` positional). Linux ARG_MAX (~2 MB
   # total argv+env) caps how large a single CLI argument can be; a
   # non-trivial prompt (full git diff plus opted-in untracked file
@@ -248,8 +249,17 @@ if [ "${CODEX_EXIT:-0}" -ne 99 ]; then
     2> "$SCRATCH/grader-$ITER.stderr.log"
   CODEX_EXIT=$?
   set -e
+else
+  # Render failed; codex was skipped. The verdict-parsing block needs a
+  # non-zero CODEX_EXIT so its `[ "$CODEX_EXIT" -eq 0 ]` test routes to
+  # the grader-fallback branch. -1 is unambiguously not a real exit
+  # code from any process; the dedicated RENDER_FAILED flag carries
+  # the "why" so the diagnostic message can be specific.
+  CODEX_EXIT=-1
 fi
-echo "CODEX_EXIT=$CODEX_EXIT"   # echo for the verdict-parsing block to consume
+echo "CODEX_EXIT=$CODEX_EXIT"        # echo for the verdict-parsing block
+echo "RENDER_FAILED=$RENDER_FAILED"  # echo so the verdict block can distinguish
+                                     # render-fail from codex-fail
 ```
 
 Parse the verdict. Validate JSON parseability **before** asking jq for `.complete` — `set -e` would otherwise abort the whole bash step on malformed grader output, bypassing the fallback path. **The block must `echo` the verdict** — it runs in the same Bash tool call as the codex invocation above so `$CODEX_EXIT` is in scope, but every parsed value (`VERDICT`, evidence, missing requirements) must be printed to stdout because Bash variables don't survive into the next Bash tool call. The agent reads the printed values out of stdout and carries them forward in its reasoning context:
@@ -292,9 +302,22 @@ if [ "$CODEX_EXIT" -eq 0 ] && [ -s "$SCRATCH/grader-$ITER.json" ] \
   fi
 else
   VERDICT_SOURCE="self-audit-fallback"
-  echo "VERDICT=grader_unusable (codex_exit=$CODEX_EXIT, file empty/malformed)" >&2
+  # Stdout contract: every parsed value goes to stdout (the agent reads
+  # stdout for downstream reasoning). Stderr is for human-only warning
+  # noise. Earlier this echoed VERDICT to stderr, which violated the
+  # contract and forced agents to infer grader-unusable from absence
+  # rather than presence of VERDICT.
+  if [ "${RENDER_FAILED:-0}" -eq 1 ]; then
+    echo "VERDICT=grader_unusable (render_failed; see render-stderr)"
+  else
+    echo "VERDICT=grader_unusable (codex_exit=$CODEX_EXIT, file empty/malformed)"
+  fi
   echo "VERDICT_SOURCE=$VERDICT_SOURCE"
   echo "FALLBACK: apply continuation.md audit checklist to your last action this iteration"
+  # Human-readable warning (mirror of the structured VERDICT line above)
+  # to stderr so a tail -f session sees the failure even when the agent
+  # is consuming stdout programmatically.
+  echo "WARN: codex grader unusable this iteration; see grader-$ITER.{stderr.log,events.log,render-stderr}" >&2
   # → apply continuation.md audit checklist to your last action
   # → if audit returns complete, go to Step 3 (record VERDICT_SOURCE=self-audit-fallback)
   # → else continue loop
