@@ -10,7 +10,7 @@
     "missing_requirements": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "One entry per requirement that is missing, incomplete, or weakly verified. Empty when complete=true."
+      "description": "One entry per requirement that is missing, incomplete, or weakly verified. MUST be empty (length 0) when complete=true; the consumer enforces this cross-field invariant via jq because OpenAI structured-outputs schema dialect does not support if/then/else."
     },
     "evidence_checked": {
       "type": "array",

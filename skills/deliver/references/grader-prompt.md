@@ -60,7 +60,7 @@ Apply this audit before producing a verdict:
 Return JSON with the following fields (this shape is also enforced externally via codex's `--output-schema`, so malformed output is rejected at the CLI level — the list here is for orientation):
 
 - `complete` (bool): true iff every requirement is covered by inspected evidence.
-- `missing_requirements` (string[]): one entry per missing/incomplete/weakly-verified requirement. Empty when complete.
+- `missing_requirements` (string[]): one entry per missing/incomplete/weakly-verified requirement. **MUST be `[]` (empty) when `complete: true`** — a contradictory verdict like `{"complete": true, "missing_requirements": ["X still broken"]}` is rejected by the consumer's cross-field invariant check and routed through the grader-fallback path as if you'd never run.
 - `evidence_checked` (string[]): one entry per real piece of evidence inspected (e.g., `src/foo.py:10-25`, `git diff HEAD shows new function bar()`, `cat /tmp/lifeline-test/a.txt → empty file`).
 
 Do not include any text outside the JSON.

@@ -11,8 +11,12 @@ Paired mode delegates each iteration's "is the objective complete?" decision to 
 Run via the Bash tool. Resolution is **inline** here (not via the resolver script) because when the skill runs as an installed plugin in a target repo, `$REPO_ROOT/skills/deliver/scripts/resolve-skill-dir.sh` does not exist — the skill files live in the plugin cache, not in the user's repo. The resolver-script call has a chicken-and-egg problem; inlining the same lookup avoids it.
 
 ```bash
-SCRATCH=$(mktemp -d -t lifeline-deliver-XXXXXX)
-echo "SCRATCH=$SCRATCH"
+# Validate everything that can fail BEFORE creating any disk artifact.
+# Earlier this block called mktemp first and then did the SKILL_DIR /
+# GRADER_TEMPLATE checks; both `exit 1` paths leaked an empty /tmp dir
+# on failed startups (plugin not installed, no codex cache, etc.).
+# Pure reads first → mktemp last means the failure paths have nothing
+# to clean up.
 
 # Resolve the deliver skill dir. Order: env override, plugin cache.
 #
@@ -55,6 +59,10 @@ SCHEMA_PATH="$SKILL_DIR/schemas/grader-output.json"
 GRADER_TEMPLATE="$SKILL_DIR/references/grader-prompt.md"
 [ -f "$GRADER_TEMPLATE" ] || { echo "ERROR: grader template not found at $GRADER_TEMPLATE" >&2; exit 1; }
 
+# All validations passed — now safe to allocate the scratch directory.
+SCRATCH=$(mktemp -d -t lifeline-deliver-XXXXXX)
+
+echo "SCRATCH=$SCRATCH"
 echo "SKILL_DIR=$SKILL_DIR"
 echo "SCHEMA_PATH=$SCHEMA_PATH"
 echo "GRADER_TEMPLATE=$GRADER_TEMPLATE"
@@ -284,13 +292,19 @@ if [ "$CODEX_EXIT" -eq 0 ] && [ -s "$SCRATCH/grader-$ITER.json" ] \
        and (.complete | type == "boolean")
        and (.missing_requirements | type == "array")
        and (.evidence_checked | type == "array")
+       and (if .complete then (.missing_requirements | length) == 0 else true end)
      ' "$SCRATCH/grader-$ITER.json" >/dev/null 2>&1; then
   # JSON is valid AND matches the schema (object with the three expected
-  # fields of the right types). `jq empty` was too lenient — it accepts
-  # `true`, `[]`, `"hi"`, or `{"complete":"true"}` (string instead of
-  # bool), which would either error under set -e or pass through with the
-  # wrong verdict. Schema validation here routes those cases through the
-  # grader-fallback branch.
+  # fields of the right types) AND the cross-field invariant holds
+  # (complete:true implies missing_requirements is empty). `jq empty`
+  # was too lenient — it accepts `true`, `[]`, `"hi"`, or
+  # `{"complete":"true"}` (string instead of bool), which would either
+  # error under set -e or pass through with the wrong verdict. The
+  # cross-field check rejects contradictory verdicts like
+  # `{"complete":true,"missing_requirements":["X still broken"]}` which
+  # the per-field schema would otherwise accept; such a verdict routes
+  # through the grader-fallback branch instead of being treated as
+  # success.
   COMPLETE=$(jq -r '.complete' "$SCRATCH/grader-$ITER.json")
   if [ "$COMPLETE" = "true" ]; then
     VERDICT="complete"
