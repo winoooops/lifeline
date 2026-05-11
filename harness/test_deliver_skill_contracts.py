@@ -44,11 +44,22 @@ def test_paired_step_2c_guards_all_rehydrated_paths() -> None:
 def test_paired_untracked_evidence_has_file_and_total_caps() -> None:
     text = PAIRED_MODE.read_text()
 
+    assert "[[ -v UNTRACKED_INCLUDE ]] || UNTRACKED_INCLUDE=()" in text
+    assert "UNTRACKED_INCLUDE=(${UNTRACKED_INCLUDE" not in text
     assert "_MAX_UNTRACKED_BYTES=16384" in text
     assert "_MAX_UNTRACKED_TOTAL_BYTES=262144" in text
     assert "_total_untracked_bytes=0" in text
     assert "UNTRACKED_INCLUDE total would exceed" in text
     assert "remaining files omitted" in text
+
+
+def test_paired_git_diff_head_has_size_cap() -> None:
+    text = PAIRED_MODE.read_text()
+
+    assert "_MAX_GIT_DIFF_HEAD_BYTES=524288" in text
+    assert "wc -c" in text
+    assert "head -c \"$_MAX_GIT_DIFF_HEAD_BYTES\"" in text
+    assert "--- diff truncated at ${_MAX_GIT_DIFF_HEAD_BYTES}B ---" in text
 
 
 def test_paired_mode_preflights_required_codex_exec_flags() -> None:
@@ -119,7 +130,10 @@ def test_deliver_guard_workflow_uses_read_only_permissions() -> None:
     assert "\npermissions:\n  contents: read\n" in text
 
 
-def test_resolver_mirrors_have_explicit_end_sentinel() -> None:
+def test_resolver_mirrors_have_explicit_boundary_sentinels() -> None:
+    assert "# BEGIN RESOLVER" in PURE_MODE.read_text()
+    assert "# BEGIN RESOLVER" in PAIRED_MODE.read_text()
+    assert "# BEGIN RESOLVER" in RESOLVER_SCRIPT.read_text()
     assert "# END RESOLVER" in PURE_MODE.read_text()
     assert "# END RESOLVER" in PAIRED_MODE.read_text()
     assert "# END RESOLVER" in RESOLVER_SCRIPT.read_text()

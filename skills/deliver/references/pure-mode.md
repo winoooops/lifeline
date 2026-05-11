@@ -36,6 +36,7 @@ Pure mode does **not** use a `$SCRATCH` directory — there are no per-iteration
 # any of these (sentinel filename, ordering, .DS_Store filter, etc.)
 # update all THREE copies. Guarded by harness/test_deliver_resolver_mirrors.py.
 # ──────────────────────────────────────────────────────────────────────
+# BEGIN RESOLVER
 SKILL_DIR=""
 # Validity sentinel is `schemas/grader-output.json` for consistency with
 # paired-mode.md and resolve-skill-dir.sh — the canonical "is this a

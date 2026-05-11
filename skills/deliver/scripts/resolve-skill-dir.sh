@@ -44,6 +44,7 @@ set -euo pipefail
 # on the mode files, not this script.
 # ────────────────────────────────────────────────────────────────────
 
+# BEGIN RESOLVER
 is_valid() {
   [ -f "$1/schemas/grader-output.json" ]
 }

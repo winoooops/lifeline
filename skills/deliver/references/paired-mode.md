@@ -42,6 +42,7 @@ Run via the Bash tool. Resolution is **inline** here (not via the resolver scrip
 # any of these (sentinel filename, ordering, .DS_Store filter, etc.)
 # update all THREE copies. Guarded by harness/test_deliver_resolver_mirrors.py.
 # ──────────────────────────────────────────────────────────────────────
+# BEGIN RESOLVER
 SKILL_DIR=""
 if [ -n "${LIFELINE_SKILL_DIR:-}" ] && [ -f "$LIFELINE_SKILL_DIR/schemas/grader-output.json" ]; then
   SKILL_DIR="$LIFELINE_SKILL_DIR"
@@ -200,6 +201,11 @@ fi
 # filename and can't verify what's inside. Augment the diff below with a
 # no-index synthetic diff for each untracked file.
 GIT_DIFF_HEAD=$(git diff HEAD 2>/dev/null || true)
+_MAX_GIT_DIFF_HEAD_BYTES=524288
+_git_diff_head_bytes=$(printf '%s' "$GIT_DIFF_HEAD" | wc -c | tr -d '[:space:]')
+if [ "$_git_diff_head_bytes" -gt "$_MAX_GIT_DIFF_HEAD_BYTES" ]; then
+  GIT_DIFF_HEAD="$(printf '%s' "$GIT_DIFF_HEAD" | head -c "$_MAX_GIT_DIFF_HEAD_BYTES")"$'\n'"--- diff truncated at ${_MAX_GIT_DIFF_HEAD_BYTES}B ---"
+fi
 UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null || true)
 GIT_STATUS=$(git status --short 2>/dev/null || true)
 FILES_TOUCHED=""   # leave empty by default; if your objective is out-of-repo
@@ -221,13 +227,10 @@ FILES_TOUCHED=""   # leave empty by default; if your objective is out-of-repo
 # large untracked files would also blow up the prompt and may exceed
 # codex's input limits.
 #
-# Set explicitly: UNTRACKED_INCLUDE=(src/foo.py /tmp/output.html)
-# Inherit-or-default: the `${arr[@]+"${arr[@]}"}` form expands to nothing
-# when the array is unset, or to the array's elements when set — yielding
-# `()` as the unset-default rather than `("")`, which the previous
-# `("${arr[@]:-}")` form produced (a spurious empty element kept alive
-# only by the `[ -z "$_f" ] && continue` guard below).
-UNTRACKED_INCLUDE=(${UNTRACKED_INCLUDE[@]+"${UNTRACKED_INCLUDE[@]}"})
+# Set explicitly: UNTRACKED_INCLUDE=(src/foo.py "/tmp/output report.html")
+# Default only when unset; once set, keep the original array intact so
+# paths containing spaces remain single elements.
+[[ -v UNTRACKED_INCLUDE ]] || UNTRACKED_INCLUDE=()
 
 # Per-file size cap (16 KB) and total cap (256 KB raw) leave room for
 # HTML escaping expansion before the content reaches the grader prompt.

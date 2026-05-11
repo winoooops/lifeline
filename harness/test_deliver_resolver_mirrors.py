@@ -18,14 +18,14 @@ RESOLVER_SCRIPT = REPO_ROOT / "skills/deliver/scripts/resolve-skill-dir.sh"
 
 def _resolver_bash_block(path: Path) -> str:
     text = path.read_text()
-    marker = "# MIRROR OF skills/deliver/scripts/resolve-skill-dir.sh"
+    marker = "# BEGIN RESOLVER"
     marker_at = text.find(marker)
-    assert marker_at != -1, f"{path} is missing the resolver mirror marker"
-    start = text.find('SKILL_DIR=""', marker_at)
-    assert start != -1, f"{path} is missing SKILL_DIR initialization after marker"
+    assert marker_at != -1, f"{path} is missing the resolver begin marker"
+    start = text.find("\n", marker_at)
+    assert start != -1, f"{path} has a resolver begin marker without a body"
     end = text.find("\n# END RESOLVER", start)
     assert end != -1, f"{path} is missing the resolver end marker"
-    return text[start:end].rstrip() + '\n\necho "SKILL_DIR=$SKILL_DIR"\n'
+    return text[start + 1:end].rstrip() + '\n\necho "SKILL_DIR=$SKILL_DIR"\n'
 
 
 RESOLVERS = {
