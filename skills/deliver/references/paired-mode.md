@@ -84,6 +84,15 @@ command -v jq >/dev/null 2>&1 || {
   exit 1
 }
 
+# Tool preflight: python3 is required for grader template rendering. If
+# missing, every paired-mode iteration render-fails and falls back to
+# self-audit instead of producing an independent codex grader verdict.
+# Catch it loud at startup instead.
+command -v python3 >/dev/null 2>&1 || {
+  echo "ERROR: python3 is required for grader template rendering. Install python3 and re-run." >&2
+  exit 1
+}
+
 # All validations passed — now safe to allocate the scratch directory.
 SCRATCH=$(mktemp -d -t lifeline-deliver-XXXXXX)
 ITER=0   # explicit initial value, echoed below so the first iteration
@@ -100,7 +109,7 @@ echo "ITER=$ITER"
 
 Capture all five values (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE`, `ITER`) from this call's stdout and use them as literal paths/integers in every subsequent Bash call.
 
-If `$SKILL_DIR` ends up empty, the grader template is missing, or jq isn't on PATH, **report a startup error and stop**. Do not enter the loop. Silent fallback to pure mode is the bug we are explicitly guarding against.
+If `$SKILL_DIR` ends up empty, the grader template is missing, jq isn't on PATH, or python3 isn't on PATH, **report a startup error and stop**. Do not enter the loop. Silent fallback to pure mode is the bug we are explicitly guarding against.
 
 ## Step 2: The loop
 
