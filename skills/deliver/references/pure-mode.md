@@ -127,6 +127,7 @@ Compute elapsed time. `START_TS` was echoed by `SKILL.md` Step 1; **rehydrate it
 
 ```bash
 START_TS=<paste the literal Unix-seconds value SKILL.md Step 1 printed>
+: "${START_TS:?START_TS must be rehydrated from SKILL.md Step 1 echo}"
 ITER=<paste the literal ITER value from Step 1 or the previous Step 2d echo>
 : "${ITER:?ITER must be rehydrated before computing the final report}"
 END_TS=$(date +%s)

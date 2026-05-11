@@ -32,6 +32,10 @@ def test_paired_step_2c_guards_all_rehydrated_paths() -> None:
         ": \"${GRADER_TEMPLATE:?GRADER_TEMPLATE must be rehydrated from Step 1 echo"
         in text
     )
+    assert (
+        ": \"${GRADER_UNUSABLE_STREAK:?GRADER_UNUSABLE_STREAK must be rehydrated"
+        in text
+    )
 
 
 def test_paired_untracked_evidence_has_file_and_total_caps() -> None:
@@ -54,3 +58,14 @@ def test_success_reports_use_computed_iteration_count() -> None:
     assert "COMPLETED_ITERATIONS=$((ITER + 1))" in paired
     assert pure.count("iterations: <COMPLETED_ITERATIONS>") == 1
     assert paired.count("iterations: <COMPLETED_ITERATIONS>") == 2
+
+
+def test_final_report_blocks_guard_start_ts_rehydration() -> None:
+    pure = PURE_MODE.read_text()
+    paired = PAIRED_MODE.read_text()
+
+    guard = (
+        ": \"${START_TS:?START_TS must be rehydrated from SKILL.md Step 1 echo}\""
+    )
+    assert guard in pure
+    assert guard in paired
