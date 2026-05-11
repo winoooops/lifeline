@@ -228,7 +228,7 @@ fi
 # objectives that create new files, the grader otherwise sees only the
 # filename and can't verify what's inside. Augment the diff below with a
 # no-index synthetic diff for each untracked file.
-GIT_DIFF_HEAD=$(git diff HEAD 2>/dev/null || true)
+GIT_DIFF_HEAD=$(git diff HEAD --no-color 2>/dev/null || true)
 _MAX_GIT_DIFF_HEAD_BYTES=524288
 UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null || true)
 GIT_STATUS=$(git status --short 2>/dev/null || true)

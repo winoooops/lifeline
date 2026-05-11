@@ -69,6 +69,7 @@ def test_paired_untracked_evidence_has_file_and_total_caps() -> None:
 def test_paired_git_diff_head_has_size_cap() -> None:
     text = PAIRED_MODE.read_text()
 
+    assert "git diff HEAD --no-color" in text
     assert "_MAX_GIT_DIFF_HEAD_BYTES=524288" in text
     assert "wc -c" in text
     assert "tr -d '[:space:]'" in text
