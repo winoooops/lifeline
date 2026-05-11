@@ -20,16 +20,19 @@ RESOLVER_SCRIPT = REPO_ROOT / "skills/deliver/scripts/resolve-skill-dir.sh"
 def _resolver_bash_block(path: Path) -> str:
     text = path.read_text()
     marker = "# MIRROR OF skills/deliver/scripts/resolve-skill-dir.sh"
-    marker_at = text.index(marker)
-    start = text.rindex("```bash\n", 0, marker_at) + len("```bash\n")
+    marker_at = text.find(marker)
+    assert marker_at != -1, f"{path} is missing the resolver mirror marker"
+    fence_at = text.rfind("```bash\n", 0, marker_at)
+    assert fence_at != -1, f"{path} is missing a bash fence before the mirror marker"
+    start = fence_at + len("```bash\n")
     end = text.index("```", marker_at)
     return text[start:end]
 
 
 RESOLVERS = {
-    "pure-mode.md inline block": ("inline", _resolver_bash_block(PURE_MODE)),
-    "paired-mode.md inline block": ("inline", _resolver_bash_block(PAIRED_MODE)),
-    "resolve-skill-dir.sh": ("script", str(RESOLVER_SCRIPT)),
+    "pure-mode.md inline block": ("inline", PURE_MODE),
+    "paired-mode.md inline block": ("inline", PAIRED_MODE),
+    "resolve-skill-dir.sh": ("script", RESOLVER_SCRIPT),
 }
 
 
@@ -64,14 +67,14 @@ def _base_env(tmp_path: Path) -> dict[str, str]:
 
 def _run_resolver(
     kind: str,
-    source: str,
+    source: Path,
     tmp_path: Path,
     env: dict[str, str],
 ) -> subprocess.CompletedProcess[str]:
     if kind == "inline":
-        cmd = ["bash", "-c", source]
+        cmd = ["bash", "-c", _resolver_bash_block(source)]
     else:
-        cmd = [source]
+        cmd = [str(source)]
 
     proc = subprocess.run(
         cmd,
@@ -111,7 +114,7 @@ def _resolved_skill_dir(proc: subprocess.CompletedProcess[str]) -> str:
 def test_deliver_resolver_mirrors_accept_env_override(
     tmp_path: Path,
     name: str,
-    resolver: tuple[str, str],
+    resolver: tuple[str, Path],
 ) -> None:
     """All three resolver copies must honor LIFELINE_SKILL_DIR first."""
     skill_dir = _make_deliver_skill(tmp_path / "local-deliver")
@@ -130,7 +133,7 @@ def test_deliver_resolver_mirrors_accept_env_override(
 def test_deliver_resolver_mirrors_pick_newest_cache_directory_and_ignore_files(
     tmp_path: Path,
     name: str,
-    resolver: tuple[str, str],
+    resolver: tuple[str, Path],
 ) -> None:
     """Mirror guard for cache ordering and the macOS .DS_Store failure mode."""
     env = _base_env(tmp_path)
@@ -156,7 +159,7 @@ def test_deliver_resolver_mirrors_pick_newest_cache_directory_and_ignore_files(
 def test_deliver_resolver_mirrors_do_not_fall_back_to_workspace(
     tmp_path: Path,
     name: str,
-    resolver: tuple[str, str],
+    resolver: tuple[str, Path],
 ) -> None:
     """Workspace lookup was removed for security; all mirrors must keep it out."""
     env = _base_env(tmp_path)

@@ -9,6 +9,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILL = REPO_ROOT / "skills/deliver/SKILL.md"
 PURE_MODE = REPO_ROOT / "skills/deliver/references/pure-mode.md"
 PAIRED_MODE = REPO_ROOT / "skills/deliver/references/paired-mode.md"
+DELIVER_GUARDS_WORKFLOW = REPO_ROOT / ".github/workflows/deliver-guards.yml"
 
 
 def test_explicit_paired_cap_has_a_maximum_bound() -> None:
@@ -69,3 +70,9 @@ def test_final_report_blocks_guard_start_ts_rehydration() -> None:
     )
     assert guard in pure
     assert guard in paired
+
+
+def test_deliver_guard_workflow_uses_read_only_permissions() -> None:
+    text = DELIVER_GUARDS_WORKFLOW.read_text()
+
+    assert "\npermissions:\n  contents: read\n" in text
