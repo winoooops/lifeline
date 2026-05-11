@@ -67,10 +67,14 @@ if [ -z "$SKILL_DIR" ]; then
   exit 1
 fi
 
+ITER=0   # explicit initial value; echoed so the first loop has the
+         # same mechanical counter handoff as subsequent Step 2d echoes.
+
 echo "SKILL_DIR=$SKILL_DIR"
+echo "ITER=$ITER"
 ```
 
-Capture `SKILL_DIR` from this call's stdout and use it as a literal path in every subsequent Bash call (including the per-iteration `Read` calls for `continuation.md` and `budget_limit.md`). `$SKILL_DIR` is read-only — pure mode never writes inside the skill dir.
+Capture `SKILL_DIR` and `ITER` from this call's stdout. Use `SKILL_DIR` as a literal path in every subsequent Bash call (including the per-iteration `Read` calls for `continuation.md` and `budget_limit.md`). Use the captured `ITER` as the source of truth for loop placeholders and budget checks until Step 2d echoes the next value. `$SKILL_DIR` is read-only — pure mode never writes inside the skill dir.
 
 If `$SKILL_DIR` is empty, **report a startup error and stop**. Continuing without it would mean every iteration silently fails to load the audit checklist.
 
@@ -83,7 +87,7 @@ While `ITER < CAP`:
 Read `$SKILL_DIR/references/continuation.md` (the literal path you captured in Step 1). Substitute placeholders in your reasoning context:
 
 - `{{ objective }}` → `$OBJECTIVE`
-- `{{ iter_used }}` → current `$ITER`
+- `{{ iter_used }}` → current `$ITER` (from Step 1's `ITER=0` echo for the first loop, then from the previous Step 2d echo)
 - `{{ iter_budget }}` → `$CAP`
 - `{{ iter_remaining }}` → `$((CAP - ITER))`
 
@@ -106,7 +110,16 @@ If the audit returns **complete**, jump to Step 3 (success) — **do not execute
 
 ### 2d. Increment
 
-`ITER = ITER + 1`. If `ITER < CAP`, loop back to 2a.
+Rehydrate `ITER` from the last echo, increment, then echo the new value. This mirrors paired mode's counter handoff and keeps budget enforcement mechanical across Bash tool-call boundaries.
+
+```bash
+ITER=<paste the literal ITER value from Step 1 or the previous Step 2d echo, e.g. ITER=0 or ITER=2>
+: "${ITER:?ITER must be rehydrated from Step 1 or previous Step 2d echo}"
+ITER=$((ITER + 1))
+echo "ITER=$ITER"
+```
+
+Capture the printed `ITER`. If `ITER < CAP`, loop back to 2a and use that captured value for `{{ iter_used }}` and `{{ iter_remaining }}`.
 
 ## Step 3: Final report
 

@@ -61,6 +61,6 @@ Return JSON with the following fields (this shape is also enforced externally vi
 
 - `complete` (bool): true iff every requirement is covered by inspected evidence.
 - `missing_requirements` (string[]): one entry per missing/incomplete/weakly-verified requirement. **MUST be `[]` (empty) when `complete: true`** — a contradictory verdict like `{"complete": true, "missing_requirements": ["X still broken"]}` is rejected by the consumer's cross-field invariant check and routed through the grader-fallback path as if you'd never run.
-- `evidence_checked` (string[]): one entry per real piece of evidence inspected (e.g., `src/foo.py:10-25`, `git diff HEAD shows new function bar()`, `cat /tmp/lifeline-test/a.txt → empty file`).
+- `evidence_checked` (string[]): one entry per real piece of evidence inspected (e.g., `src/foo.py:10-25`, `git diff HEAD shows new function bar()`, `cat /tmp/lifeline-test/a.txt → empty file`). **MUST contain at least one entry when `complete: true`** — an evidence-free completion verdict is rejected by the consumer's cross-field invariant check and routed through the grader-fallback path.
 
 Do not include any text outside the JSON.

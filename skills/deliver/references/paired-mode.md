@@ -127,7 +127,7 @@ Optionally maintain a mental list of files you touched this iteration — it get
 
 Build the grader prompt and invoke `codex exec`. **Rehydrate `ITER` as a shell variable** at the top of the block — the same `VAR=<paste literal value>` pattern used for `SCRATCH`/`SKILL_DIR`/`SCHEMA_PATH`/`GRADER_TEMPLATE`. The current ITER value comes from Step 1's `echo "ITER=$ITER"` (for the first iteration) or from the previous iteration's Step 2d post-increment echo. Do NOT inline-substitute `$ITER` throughout the block — that breaks the `${ITER:?}` guard (it would become `${1:?}` etc., where `$N` is the empty positional parameter). Set ITER once at the top; let bash do the variable expansion below.
 
-The `${ITER:?}` guard exits with an error if rehydration was missed, converting silent per-iteration path collisions (`grader-.json`, `render-input-/` overwriting on every iteration) into a loud startup failure.
+The `${ITER:?}` guard exits with an error if rehydration was missed, converting silent per-iteration path collisions (`grader-.json`, `render-input-/` overwriting on every iteration) into a loud startup failure. The `${SCRATCH:?}` guard does the same for the scratch root before any per-iteration artifact paths are built.
 
 ```bash
 # Rehydrate ITER as a shell variable (same pattern as SCRATCH below).
@@ -144,6 +144,7 @@ SKILL_DIR=<paste the literal SKILL_DIR value from Step 1>
 SCHEMA_PATH=<paste the literal SCHEMA_PATH value from Step 1>
 GRADER_TEMPLATE=<paste the literal GRADER_TEMPLATE value from Step 1>
 : "${ITER:?ITER must be rehydrated from the previous echo; see Step 2c preamble}"
+: "${SCRATCH:?SCRATCH must be rehydrated from Step 1 echo; see Step 2c preamble}"
 
 # Tracked-file diff. `git diff HEAD` omits untracked file CONTENTS — for
 # objectives that create new files, the grader otherwise sees only the
@@ -353,18 +354,21 @@ if [ "$CODEX_EXIT" -eq 0 ] && [ -s "$SCRATCH/grader-$ITER.json" ] \
        and (.missing_requirements | type == "array")
        and (.evidence_checked | type == "array")
        and (if .complete then (.missing_requirements | length) == 0 else true end)
+       and (if .complete then (.evidence_checked | length) > 0 else true end)
      ' "$SCRATCH/grader-$ITER.json" >/dev/null 2>&1; then
   # JSON is valid AND matches the schema (object with the three expected
-  # fields of the right types) AND the cross-field invariant holds
-  # (complete:true implies missing_requirements is empty). `jq empty`
+  # fields of the right types) AND the cross-field invariants hold
+  # (complete:true implies missing_requirements is empty and
+  # evidence_checked is non-empty). `jq empty`
   # was too lenient — it accepts `true`, `[]`, `"hi"`, or
   # `{"complete":"true"}` (string instead of bool), which would either
   # error under set -e or pass through with the wrong verdict. The
-  # cross-field check rejects contradictory verdicts like
-  # `{"complete":true,"missing_requirements":["X still broken"]}` which
-  # the per-field schema would otherwise accept; such a verdict routes
-  # through the grader-fallback branch instead of being treated as
-  # success.
+  # cross-field checks reject contradictory or evidence-free verdicts
+  # like `{"complete":true,"missing_requirements":["X still broken"]}`
+  # and `{"complete":true,"missing_requirements":[],
+  # "evidence_checked":[]}` which the per-field schema would otherwise
+  # accept; such a verdict routes through the grader-fallback branch
+  # instead of being treated as success.
   COMPLETE=$(jq -r '.complete' "$SCRATCH/grader-$ITER.json")
   if [ "$COMPLETE" = "true" ]; then
     VERDICT="complete"
