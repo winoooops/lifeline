@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import stat
 import subprocess
 from pathlib import Path
 
@@ -58,22 +57,9 @@ def _make_deliver_skill(path: Path) -> Path:
     return path
 
 
-def _fake_tool(path: Path) -> None:
-    path.write_text("#!/bin/sh\nexit 0\n")
-    path.chmod(path.stat().st_mode | stat.S_IXUSR)
-
-
 def _base_env(tmp_path: Path) -> dict[str, str]:
-    fake_bin = tmp_path / "fake-bin"
-    fake_bin.mkdir(exist_ok=True)
-    # The paired-mode block checks these tools before it allocates scratch.
-    # The resolver tests do not need the real binaries.
-    _fake_tool(fake_bin / "jq")
-    _fake_tool(fake_bin / "python3")
-
     env = os.environ.copy()
     env["HOME"] = str(tmp_path / "home")
-    env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH', '')}"
     env["TMPDIR"] = str(tmp_path)
     env.pop("LIFELINE_SKILL_DIR", None)
     return env

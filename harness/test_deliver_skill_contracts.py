@@ -72,8 +72,8 @@ def test_paired_git_diff_head_has_size_cap() -> None:
     assert "_MAX_GIT_DIFF_HEAD_BYTES=524288" in text
     assert "wc -c" in text
     assert "tr -d '[:space:]'" in text
-    assert "head -c \"$_MAX_GIT_DIFF_HEAD_BYTES\"" in text
-    assert "--- diff truncated at ${_MAX_GIT_DIFF_HEAD_BYTES}B ---" in text
+    assert "head -c \"$_MAX_GIT_DIFF_HEAD_BYTES\" | sed '$d'" in text
+    assert "--- diff truncated at ${_MAX_GIT_DIFF_HEAD_BYTES}B on a line boundary ---" in text
 
 
 def test_paired_mode_preflights_required_codex_exec_flags() -> None:
@@ -253,13 +253,15 @@ def test_smoke_tests_section_points_to_existing_guards() -> None:
     assert ".github/workflows/deliver-guards.yml" in text
 
 
-def test_paired_files_touched_is_verbatim_path_list_for_grader() -> None:
+def test_paired_files_touched_is_escaped_and_grader_decodes_path_hints() -> None:
     paired = PAIRED_MODE.read_text()
     prompt = (REPO_ROOT / "skills/deliver/references/grader-prompt.md").read_text()
 
-    assert "'{{ files_touched }}':   read_text(f\"{d}/files_touched\")" in paired
-    assert "'{{ files_touched }}':   safe(f\"{d}/files_touched\")" not in paired
-    assert "files_touched` is inserted verbatim" in prompt
+    assert "'{{ files_touched }}':   safe(f\"{d}/files_touched\")" in paired
+    assert "'{{ files_touched }}':   read_text(f\"{d}/files_touched\")" not in paired
+    assert "including `files_touched`, are HTML-encoded" in prompt
+    assert "HTML-decode each path once before running `cat`, `ls`, or `head`" in prompt
+    assert "not the `&lt;`, `&gt;`, or `&amp;` entity text" in prompt
     assert "opaque path hint" in prompt
 
 
