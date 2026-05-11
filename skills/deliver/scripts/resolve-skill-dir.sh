@@ -45,7 +45,7 @@ set -euo pipefail
 # ────────────────────────────────────────────────────────────────────
 
 is_valid() {
-  [ -f "${1:-}/schemas/grader-output.json" ]
+  [ -f "$1/schemas/grader-output.json" ]
 }
 
 # 1. Env override.
@@ -78,3 +78,4 @@ echo "ERROR: could not resolve lifeline skills/deliver directory." >&2
 echo "  Tried: \$LIFELINE_SKILL_DIR, $CACHE_ROOT/<latest>/skills/deliver" >&2
 echo "  Set LIFELINE_SKILL_DIR or install the plugin via /plugin install lifeline." >&2
 exit 1
+# END RESOLVER

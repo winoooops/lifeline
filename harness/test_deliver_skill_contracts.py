@@ -10,6 +10,7 @@ SKILL = REPO_ROOT / "skills/deliver/SKILL.md"
 PURE_MODE = REPO_ROOT / "skills/deliver/references/pure-mode.md"
 PAIRED_MODE = REPO_ROOT / "skills/deliver/references/paired-mode.md"
 DELIVER_GUARDS_WORKFLOW = REPO_ROOT / ".github/workflows/deliver-guards.yml"
+RESOLVER_SCRIPT = REPO_ROOT / "skills/deliver/scripts/resolve-skill-dir.sh"
 
 
 def test_explicit_paired_cap_has_a_maximum_bound() -> None:
@@ -106,3 +107,16 @@ def test_deliver_guard_workflow_uses_read_only_permissions() -> None:
     text = DELIVER_GUARDS_WORKFLOW.read_text()
 
     assert "\npermissions:\n  contents: read\n" in text
+
+
+def test_resolver_mirrors_have_explicit_end_sentinel() -> None:
+    assert "# END RESOLVER" in PURE_MODE.read_text()
+    assert "# END RESOLVER" in PAIRED_MODE.read_text()
+    assert "# END RESOLVER" in RESOLVER_SCRIPT.read_text()
+
+
+def test_resolver_script_validity_check_matches_inline_empty_path_behavior() -> None:
+    text = RESOLVER_SCRIPT.read_text()
+
+    assert '${1:-}' not in text
+    assert '[ -f "$1/schemas/grader-output.json" ]' in text

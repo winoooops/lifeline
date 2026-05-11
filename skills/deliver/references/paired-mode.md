@@ -68,6 +68,7 @@ if [ -z "$SKILL_DIR" ]; then
   echo "ERROR: could not resolve skills/deliver. Set LIFELINE_SKILL_DIR or install the plugin via /plugin install lifeline." >&2
   exit 1
 fi
+# END RESOLVER
 
 SCHEMA_PATH="$SKILL_DIR/schemas/grader-output.json"
 GRADER_TEMPLATE="$SKILL_DIR/references/grader-prompt.md"

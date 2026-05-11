@@ -66,6 +66,7 @@ if [ -z "$SKILL_DIR" ]; then
   echo "ERROR: could not resolve skills/deliver. Set LIFELINE_SKILL_DIR or install the plugin via /plugin install lifeline." >&2
   exit 1
 fi
+# END RESOLVER
 
 ITER=0   # explicit initial value; echoed so the first loop has the
          # same mechanical counter handoff as subsequent Step 2d echoes.

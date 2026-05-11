@@ -24,17 +24,8 @@ def _resolver_bash_block(path: Path) -> str:
     assert marker_at != -1, f"{path} is missing the resolver mirror marker"
     start = text.find('SKILL_DIR=""', marker_at)
     assert start != -1, f"{path} is missing SKILL_DIR initialization after marker"
-
-    end_candidates = [
-        pos
-        for pos in (
-            text.find("\nSCHEMA_PATH=", start),
-            text.find("\nITER=0", start),
-        )
-        if pos != -1
-    ]
-    assert end_candidates, f"{path} is missing a resolver end marker"
-    end = min(end_candidates)
+    end = text.find("\n# END RESOLVER", start)
+    assert end != -1, f"{path} is missing the resolver end marker"
     return text[start:end].rstrip() + '\n\necho "SKILL_DIR=$SKILL_DIR"\n'
 
 
