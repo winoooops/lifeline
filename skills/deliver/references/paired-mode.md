@@ -419,6 +419,7 @@ Rehydrate `ITER` from the previous echo, increment, then echo the new value — 
 
 ```bash
 ITER=<paste the literal ITER value from the previous echo, e.g. ITER=0 or ITER=2>
+: "${ITER:?ITER must be rehydrated from previous echo}"
 ITER=$((ITER + 1))
 echo "ITER=$ITER"
 ```
