@@ -77,9 +77,14 @@ def test_paired_mode_preflights_required_codex_exec_flags() -> None:
 def test_paired_mode_materializes_objective_without_shell_state() -> None:
     text = PAIRED_MODE.read_text()
 
-    assert "cat > \"$RENDER_DIR/objective\" <<'LIFELINE_OBJECTIVE_RAW'" in text
+    assert 'OBJECTIVE_DELIM="__OBJECTIVE_DELIM_PLACEHOLDER__"' in text
+    assert "Leave the guard" in text
+    assert "comparison string unchanged" in text
+    assert "unchanged so it can catch a missed replacement" in text
+    assert "cat > \"$RENDER_DIR/objective\" <<'__OBJECTIVE_DELIM_PLACEHOLDER__'" in text
     assert "Do not rely" in text
     assert "$OBJECTIVE` shell variable" in text
+    assert "LIFELINE_OBJECTIVE_RAW" not in text
     assert "printf '%s' \"$OBJECTIVE\"" not in text
 
 
@@ -95,7 +100,10 @@ def test_pure_mode_preflights_continuation_template() -> None:
 def test_pure_mode_computes_escaped_objective_once() -> None:
     text = PURE_MODE.read_text()
 
-    assert "OBJECTIVE_RAW=$(cat <<'LIFELINE_OBJECTIVE_RAW'" in text
+    assert 'OBJECTIVE_DELIM="__OBJECTIVE_DELIM_PLACEHOLDER__"' in text
+    assert "guard comparison string" in text
+    assert "unchanged so it can catch a missed replacement" in text
+    assert "OBJECTIVE_RAW=$(cat <<'__OBJECTIVE_DELIM_PLACEHOLDER__'" in text
     assert "sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g'" in text
     assert "OBJECTIVE_HTML_DELIM=" in text
     assert "printf 'OBJECTIVE_HTML<<%s\\n'" in text
@@ -174,7 +182,9 @@ def test_resolver_mirrors_have_explicit_boundary_sentinels() -> None:
 def test_mode_initialization_echoes_resolved_skill_dir_after_resolver() -> None:
     for path in (PURE_MODE, PAIRED_MODE):
         text = path.read_text()
-        after_resolver = text[text.index("# END RESOLVER") :]
+        end_marker = text.find("# END RESOLVER")
+        assert end_marker != -1, f"{path.name} missing # END RESOLVER"
+        after_resolver = text[end_marker:]
 
         assert 'echo "SKILL_DIR=$SKILL_DIR"' in after_resolver
 

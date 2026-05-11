@@ -281,11 +281,18 @@ RENDER_DIR="$SCRATCH/render-input-$ITER"
 mkdir -p "$RENDER_DIR"
 # Paste the objective exactly as parsed in SKILL.md Step 0. Do not rely
 # on a `$OBJECTIVE` shell variable — Bash state does not persist between
-# tool calls. If the objective contains LIFELINE_OBJECTIVE_RAW on its own
-# line, replace the here-doc delimiter below with a collision-free token.
-cat > "$RENDER_DIR/objective" <<'LIFELINE_OBJECTIVE_RAW'
+# tool calls. Before running this block, replace the assignment value
+# plus the opening and closing here-doc delimiters with the same fresh
+# token that does not occur anywhere in the objective. Leave the guard
+# comparison string unchanged so it can catch a missed replacement.
+OBJECTIVE_DELIM="__OBJECTIVE_DELIM_PLACEHOLDER__"
+if [ "$OBJECTIVE_DELIM" = "__OBJECTIVE_DELIM_PLACEHOLDER__" ]; then
+  echo "ERROR: replace the objective delimiter placeholder before running paired mode Step 2c." >&2
+  exit 1
+fi
+cat > "$RENDER_DIR/objective" <<'__OBJECTIVE_DELIM_PLACEHOLDER__'
 <paste the exact OBJECTIVE from SKILL.md Step 0>
-LIFELINE_OBJECTIVE_RAW
+__OBJECTIVE_DELIM_PLACEHOLDER__
 printf '%s' "$GIT_DIFF_HEAD"  > "$RENDER_DIR/git_diff_head"
 printf '%s' "$UNTRACKED"      > "$RENDER_DIR/untracked"
 printf '%s' "$GIT_STATUS"     > "$RENDER_DIR/git_status"

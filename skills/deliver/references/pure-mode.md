@@ -72,13 +72,19 @@ fi
 [ -f "$SKILL_DIR/references/continuation.md" ] || { echo "ERROR: continuation.md not found at $SKILL_DIR/references/continuation.md" >&2; exit 1; }
 [ -f "$SKILL_DIR/references/budget_limit.md" ] || { echo "ERROR: budget_limit.md not found at $SKILL_DIR/references/budget_limit.md" >&2; exit 1; }
 
-# Paste the objective exactly as parsed in SKILL.md Step 0. If the
-# objective contains LIFELINE_OBJECTIVE_RAW on its own line, replace
-# the here-doc delimiter below with a collision-free token before
-# running this block.
-OBJECTIVE_RAW=$(cat <<'LIFELINE_OBJECTIVE_RAW'
+# Paste the objective exactly as parsed in SKILL.md Step 0. Before
+# running this block, replace the assignment value plus the opening and
+# closing here-doc delimiters with the same fresh token that does not
+# occur anywhere in the objective. Leave the guard comparison string
+# unchanged so it can catch a missed replacement.
+OBJECTIVE_DELIM="__OBJECTIVE_DELIM_PLACEHOLDER__"
+if [ "$OBJECTIVE_DELIM" = "__OBJECTIVE_DELIM_PLACEHOLDER__" ]; then
+  echo "ERROR: replace the objective delimiter placeholder before running pure mode Step 1." >&2
+  exit 1
+fi
+OBJECTIVE_RAW=$(cat <<'__OBJECTIVE_DELIM_PLACEHOLDER__'
 <paste the exact OBJECTIVE from SKILL.md Step 0>
-LIFELINE_OBJECTIVE_RAW
+__OBJECTIVE_DELIM_PLACEHOLDER__
 )
 OBJECTIVE_HTML=$(printf '%s' "$OBJECTIVE_RAW" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
 OBJECTIVE_HTML_DELIM="LIFELINE_OBJECTIVE_HTML_$(date +%s)_$$"
