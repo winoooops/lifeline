@@ -206,9 +206,9 @@ FILES_TOUCHED=""   # leave empty by default; if your objective is out-of-repo
 # only by the `[ -z "$_f" ] && continue` guard below).
 UNTRACKED_INCLUDE=(${UNTRACKED_INCLUDE[@]+"${UNTRACKED_INCLUDE[@]}"})
 
-# Per-file size cap (64 KB) prevents a single large untracked file from
-# overwhelming the prompt even when the agent did opt to include it.
-_MAX_UNTRACKED_BYTES=65536
+# Per-file size cap (16 KB) leaves room for HTML escaping expansion before
+# the content reaches the grader prompt.
+_MAX_UNTRACKED_BYTES=16384
 for _f in "${UNTRACKED_INCLUDE[@]}"; do
   [ -z "$_f" ] && continue
   [ -f "$_f" ] || continue
@@ -435,9 +435,10 @@ else
   # Human-readable warning (mirror of the structured VERDICT line above)
   # to stderr so a tail -f session sees the failure even when the agent
   # is consuming stdout programmatically.
-  echo "WARN: codex grader unusable this iteration (consecutive=$GRADER_UNUSABLE_STREAK/3); see grader-$ITER.{stderr.log,events.log,render-stderr}" >&2
+  echo "WARN: codex grader unusable this iteration (consecutive=$GRADER_UNUSABLE_STREAK/3); see $SCRATCH/grader-$ITER.{stderr.log,events.log,render-stderr}" >&2
   if [ "$GRADER_UNUSABLE_STREAK" -ge 3 ]; then
     echo "ERROR: codex grader unusable for $GRADER_UNUSABLE_STREAK consecutive iterations; stopping instead of silently degrading paired mode to self-audit." >&2
+    echo "scratch_dir: $SCRATCH" >&2
     exit 1
   fi
   echo "FALLBACK: apply continuation.md audit checklist to your last action this iteration"
