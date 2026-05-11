@@ -102,7 +102,7 @@ Optionally maintain a mental list of files you touched this iteration — it get
 
 ### 2c. Run the codex grader
 
-Build the grader prompt and invoke `codex exec`:
+Build the grader prompt and invoke `codex exec`. **`$ITER` in the bash block below is a mental loop counter** — it is never echoed to stdout, so substitute its current numeric value (e.g. `0`, `1`, `2`) as a bare integer when you write each Bash tool call. Without this substitution, every iteration's files collapse to the same path (`grader-.json`, `render-input-/`), silently overwriting prior iterations' grader verdicts and event logs and breaking `budget_limited` postmortem inspection. (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE` are stdout-echoed by Step 1; rehydrate them the same way.)
 
 ```bash
 # Tracked-file diff. `git diff HEAD` omits untracked file CONTENTS — for

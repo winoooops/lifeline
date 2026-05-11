@@ -95,7 +95,7 @@ Apply the checklist from continuation.md to the action you just took:
 - Inspect the actual evidence. Do **not** treat partial progress, "looks correct," or proxy signals (passing tests, complete manifest, substantial effort) as completion unless they cover every requirement.
 - Treat uncertainty as **not done** — if anything is missing, incomplete, or unverified, continue the loop.
 
-If the audit returns **complete**, jump to Step 3 (success). Otherwise, continue.
+If the audit returns **complete**, jump to Step 3 (success) — **do not execute Step 2d**. Otherwise, continue. (Without the explicit "do not execute Step 2d" guard, an LLM following sections sequentially would increment `ITER` first, inflating the iteration count in the success report by 1.)
 
 ### 2d. Increment
 
