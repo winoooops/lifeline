@@ -21,12 +21,27 @@ def test_explicit_paired_cap_has_a_maximum_bound() -> None:
 def test_paired_step_2c_guards_all_rehydrated_paths() -> None:
     text = PAIRED_MODE.read_text()
 
+    assert (
+        ": \"${ITER:?ITER must be rehydrated from the previous echo"
+        in text
+    )
+    assert ": \"${SCRATCH:?SCRATCH must be rehydrated from Step 1 echo" in text
     assert ": \"${SKILL_DIR:?SKILL_DIR must be rehydrated from Step 1 echo" in text
     assert ": \"${SCHEMA_PATH:?SCHEMA_PATH must be rehydrated from Step 1 echo" in text
     assert (
         ": \"${GRADER_TEMPLATE:?GRADER_TEMPLATE must be rehydrated from Step 1 echo"
         in text
     )
+
+
+def test_paired_untracked_evidence_has_file_and_total_caps() -> None:
+    text = PAIRED_MODE.read_text()
+
+    assert "_MAX_UNTRACKED_BYTES=16384" in text
+    assert "_MAX_UNTRACKED_TOTAL_BYTES=262144" in text
+    assert "_total_untracked_bytes=0" in text
+    assert "UNTRACKED_INCLUDE total would exceed" in text
+    assert "remaining files omitted" in text
 
 
 def test_success_reports_use_computed_iteration_count() -> None:

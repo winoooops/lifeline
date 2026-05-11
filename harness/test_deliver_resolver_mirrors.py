@@ -17,16 +17,18 @@ PAIRED_MODE = REPO_ROOT / "skills/deliver/references/paired-mode.md"
 RESOLVER_SCRIPT = REPO_ROOT / "skills/deliver/scripts/resolve-skill-dir.sh"
 
 
-def _first_bash_block(path: Path) -> str:
+def _resolver_bash_block(path: Path) -> str:
     text = path.read_text()
-    start = text.index("```bash\n") + len("```bash\n")
-    end = text.index("```", start)
+    marker = "# MIRROR OF skills/deliver/scripts/resolve-skill-dir.sh"
+    marker_at = text.index(marker)
+    start = text.rindex("```bash\n", 0, marker_at) + len("```bash\n")
+    end = text.index("```", marker_at)
     return text[start:end]
 
 
 RESOLVERS = {
-    "pure-mode.md inline block": ("inline", _first_bash_block(PURE_MODE)),
-    "paired-mode.md inline block": ("inline", _first_bash_block(PAIRED_MODE)),
+    "pure-mode.md inline block": ("inline", _resolver_bash_block(PURE_MODE)),
+    "paired-mode.md inline block": ("inline", _resolver_bash_block(PAIRED_MODE)),
     "resolve-skill-dir.sh": ("script", str(RESOLVER_SCRIPT)),
 }
 

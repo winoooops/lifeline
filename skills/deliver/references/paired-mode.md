@@ -209,9 +209,11 @@ FILES_TOUCHED=""   # leave empty by default; if your objective is out-of-repo
 # only by the `[ -z "$_f" ] && continue` guard below).
 UNTRACKED_INCLUDE=(${UNTRACKED_INCLUDE[@]+"${UNTRACKED_INCLUDE[@]}"})
 
-# Per-file size cap (16 KB) leaves room for HTML escaping expansion before
-# the content reaches the grader prompt.
+# Per-file size cap (16 KB) and total cap (256 KB raw) leave room for
+# HTML escaping expansion before the content reaches the grader prompt.
 _MAX_UNTRACKED_BYTES=16384
+_MAX_UNTRACKED_TOTAL_BYTES=262144
+_total_untracked_bytes=0
 for _f in "${UNTRACKED_INCLUDE[@]}"; do
   [ -z "$_f" ] && continue
   [ -f "$_f" ] || continue
@@ -227,6 +229,11 @@ for _f in "${UNTRACKED_INCLUDE[@]}"; do
     GIT_DIFF_HEAD+=$'\n'"--- skipped (>${_MAX_UNTRACKED_BYTES}B): $_f"$'\n'
     continue
   fi
+  if [ $((_total_untracked_bytes + _sz)) -gt "$_MAX_UNTRACKED_TOTAL_BYTES" ]; then
+    GIT_DIFF_HEAD+=$'\n'"--- evidence truncated: UNTRACKED_INCLUDE total would exceed ${_MAX_UNTRACKED_TOTAL_BYTES}B at $_f; remaining files omitted ---"$'\n'
+    break
+  fi
+  _total_untracked_bytes=$((_total_untracked_bytes + _sz))
   GIT_DIFF_HEAD+=$'\n'
   GIT_DIFF_HEAD+=$(git diff --no-index --no-color -- /dev/null "$_f" 2>/dev/null || true)
 done
