@@ -55,7 +55,7 @@ Apply this audit before producing a verdict:
 
 ## Output
 
-Return JSON matching `skills/deliver/schemas/grader-output.json`:
+Return JSON with the following fields (this shape is also enforced externally via codex's `--output-schema`, so malformed output is rejected at the CLI level — the list here is for orientation):
 
 - `complete` (bool): true iff every requirement is covered by inspected evidence.
 - `missing_requirements` (string[]): one entry per missing/incomplete/weakly-verified requirement. Empty when complete.

@@ -112,7 +112,12 @@ FILES_TOUCHED="<bulleted list you maintained mentally — or empty if you did no
 # codex's input limits.
 #
 # Set explicitly: UNTRACKED_INCLUDE=(src/foo.py /tmp/output.html)
-UNTRACKED_INCLUDE=("${UNTRACKED_INCLUDE[@]:-}")
+# Inherit-or-default: the `${arr[@]+"${arr[@]}"}` form expands to nothing
+# when the array is unset, or to the array's elements when set — yielding
+# `()` as the unset-default rather than `("")`, which the previous
+# `("${arr[@]:-}")` form produced (a spurious empty element kept alive
+# only by the `[ -z "$_f" ] && continue` guard below).
+UNTRACKED_INCLUDE=(${UNTRACKED_INCLUDE[@]+"${UNTRACKED_INCLUDE[@]}"})
 
 # Per-file size cap (64 KB) prevents a single large untracked file from
 # overwhelming the prompt even when the agent did opt to include it.
@@ -240,6 +245,7 @@ if [ "${CODEX_EXIT:-0}" -ne 99 ]; then
   CODEX_EXIT=$?
   set -e
 fi
+echo "CODEX_EXIT=$CODEX_EXIT"   # echo for the verdict-parsing block to consume
 ```
 
 Parse the verdict. Validate JSON parseability **before** asking jq for `.complete` — `set -e` would otherwise abort the whole bash step on malformed grader output, bypassing the fallback path. **The block must `echo` the verdict** — it runs in the same Bash tool call as the codex invocation above so `$CODEX_EXIT` is in scope, but every parsed value (`VERDICT`, evidence, missing requirements) must be printed to stdout because Bash variables don't survive into the next Bash tool call. The agent reads the printed values out of stdout and carries them forward in its reasoning context:
