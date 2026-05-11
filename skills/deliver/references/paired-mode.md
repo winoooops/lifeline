@@ -125,9 +125,20 @@ Optionally maintain a mental list of files you touched this iteration — it get
 
 ### 2c. Run the codex grader
 
-Build the grader prompt and invoke `codex exec`. **`$ITER` in the bash block below is a mental loop counter** — it is never echoed to stdout, so substitute its current numeric value (e.g. `0`, `1`, `2`) as a bare integer when you write each Bash tool call. Without this substitution, every iteration's files collapse to the same path (`grader-.json`, `render-input-/`), silently overwriting prior iterations' grader verdicts and event logs and breaking `budget_limited` postmortem inspection. (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE` are stdout-echoed by Step 1; rehydrate them the same way.)
+Build the grader prompt and invoke `codex exec`. **`$ITER` in the bash block below must be substituted with the current loop counter as a bare integer** (e.g. `0`, `1`, `2`) when you write each Bash tool call. ITER IS echoed elsewhere — by Step 1 (initial `ITER=0`) and by Step 2d (post-increment) — but those echoes are how you *know* the value to substitute; the value itself doesn't carry into this fresh shell. Without literal substitution, every iteration's files collapse to the same path (`grader-.json`, `render-input-/`), silently overwriting prior iterations' grader verdicts and event logs and breaking `budget_limited` postmortem inspection.
+
+The block below opens with `: "${ITER:?...}"` — a shell parameter expansion that exits with an error if you forgot to substitute or pasted nothing. This converts silent path-collapse into a loud startup failure. (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE` are also stdout-echoed; rehydrate them the same way at the top of the block.)
 
 ```bash
+# Required-substitution guard. ITER must be a literal integer (the
+# current loop counter from Step 1's initial echo or Step 2d's
+# post-increment echo). The :?... expansion exits with an error if
+# the value is unset or empty — converting silent per-iteration
+# path collisions (every grader-.json, render-input-/ overlapping)
+# into an obvious startup failure. SCRATCH and friends should be
+# similarly rehydrated as literals from Step 1's stdout.
+: "${ITER:?must be substituted with the current iteration integer (0, 1, 2, …); see Step 2c preamble}"
+
 # Tracked-file diff. `git diff HEAD` omits untracked file CONTENTS — for
 # objectives that create new files, the grader otherwise sees only the
 # filename and can't verify what's inside. Augment the diff below with a
@@ -444,11 +455,17 @@ evidence_checked:
 note: paired mode degraded to self-audit for the final iteration — re-run when codex is reachable for an independent verdict.
 ```
 
-Then clean up the scratch dir. **Rehydrate `$SCRATCH` first** — this block runs in a fresh Bash tool call so the variable from Step 1 isn't in scope; without the rehydration, `rm -rf ""` is a no-op and the scratch dir leaks to /tmp on every successful run:
+Then clean up the scratch dir. **Rehydrate `$SCRATCH` first** — this block runs in a fresh Bash tool call so the variable from Step 1 isn't in scope; without the rehydration, `rm -rf ""` is a no-op and the scratch dir leaks to /tmp on every successful run.
+
+The `[[ ... ]]` prefix check converts a misquoted/wrong rehydration into a visible warning instead of a destructive `rm -rf` against an unrelated path. mktemp guarantees the path matches `/tmp/lifeline-deliver-XXXXXX`, so the guard rejects anything else:
 
 ```bash
 SCRATCH=<paste the literal scratch path SCRATCH= line from Step 1 stdout>
-rm -rf "$SCRATCH"
+if [[ "$SCRATCH" == /tmp/lifeline-deliver-* ]]; then
+  rm -rf "$SCRATCH"
+else
+  echo "WARN: $SCRATCH does not match /tmp/lifeline-deliver-* — skipping cleanup to avoid destroying the wrong path." >&2
+fi
 ```
 
 ### Budget-limited path
