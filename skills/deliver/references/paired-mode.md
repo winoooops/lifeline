@@ -171,7 +171,11 @@ if GRADER_TEMPLATE="$GRADER_TEMPLATE" RENDER_DIR="$RENDER_DIR" \
    python3 - > "$PROMPT_FILE" 2>"$SCRATCH/grader-$ITER.render-stderr" <<'PY'
 import os, re, html
 d = os.environ['RENDER_DIR']
-template = open(os.environ['GRADER_TEMPLATE']).read()
+# Force UTF-8 — system default encoding (locale-derived) raises
+# UnicodeDecodeError on non-ASCII bytes when LANG/LC_ALL isn't UTF-8
+# (minimal containers, some CI envs). All our evidence is text and
+# UTF-8 is the only sensible choice.
+template = open(os.environ['GRADER_TEMPLATE'], encoding='utf-8').read()
 
 # HTML-escape every evidence value before substitution. Without this, a
 # value containing `</untrusted_objective>` (or any of the other
@@ -185,7 +189,7 @@ template = open(os.environ['GRADER_TEMPLATE']).read()
 # separate concern handled here. For text-mode evidence (diffs, file
 # lists), HTML-escaping is also reversible if a downstream consumer
 # wants to display it.
-def safe(p): return html.escape(open(p).read(), quote=False)
+def safe(p): return html.escape(open(p, encoding='utf-8').read(), quote=False)
 
 mapping = {
     '{{ objective }}':       safe(f"{d}/objective"),
