@@ -23,15 +23,17 @@ The `references/continuation.md` and `references/budget_limit.md` files are deri
 
 Strip leading whitespace. Then:
 
-1. If first whitespace-separated token is `pair`:
+1. If first whitespace-separated token is `--`: `MODE = pure`, `CAP = 20`, `OBJECTIVE = rest of $ARGUMENTS after --`. This is the escape hatch for pure-mode objectives that naturally start with a reserved word such as `pair`.
+2. If first whitespace-separated token is `pair`:
    - `MODE = paired`
    - If second token parses as **any integer** (positive, zero, or negative):
      - When ≤ 0: error with `iteration cap must be a positive integer` and stop. Do not enter the loop.
      - When > 50: error with `iteration cap must be <= 50` and stop. Do not enter the loop.
      - When 1..50: `CAP = int(second token)`, `OBJECTIVE = rest of $ARGUMENTS after the integer`.
    - If second token does **not** parse as an integer: `CAP = 20`, `OBJECTIVE = rest of $ARGUMENTS after pair`.
-2. Else: `MODE = pure`, `CAP = 20`, `OBJECTIVE = full $ARGUMENTS`.
-3. If `OBJECTIVE` is empty after stripping, use `AskUserQuestion` to collect one before proceeding.
+   - Before Step 1, emit a visible parse confirmation line: `Mode parse: paired; objective: <OBJECTIVE>`. If the user intended a pure-mode objective beginning with `pair`, tell them to rerun as `/lifeline:deliver -- pair ...`.
+3. Else: `MODE = pure`, `CAP = 20`, `OBJECTIVE = full $ARGUMENTS`.
+4. If `OBJECTIVE` is empty after stripping, use `AskUserQuestion` to collect one before proceeding.
 
 Initialize `ITER = 0`.
 

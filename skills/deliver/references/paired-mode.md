@@ -588,7 +588,7 @@ fi
 
 ### Budget-limited path
 
-When `ITER == CAP` without a complete verdict, read `$SKILL_DIR/references/budget_limit.md`, substitute the same placeholders as 2a (including the HTML-escaped objective), and use it for one wrap-up turn. Then emit:
+When `ITER == CAP` without a complete verdict, read `$SKILL_DIR/references/budget_limit.md`, substitute only the placeholders that file contains (`{{ objective }}` → HTML-escaped objective, `{{ iter_used }}` → current `$ITER` which equals `$CAP`, `{{ iter_budget }}` → `$CAP`), and use it for one wrap-up turn. Then emit:
 
 ```
 Deliveries halted at iteration cap (<MINS>m <SECS>s elapsed).

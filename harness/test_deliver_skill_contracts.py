@@ -23,6 +23,15 @@ def test_explicit_paired_cap_has_a_maximum_bound() -> None:
     assert "When 1..50: `CAP = int(second token)`" in text
 
 
+def test_pair_prefix_parse_has_confirmation_and_escape_hatch() -> None:
+    text = SKILL.read_text()
+
+    assert "first whitespace-separated token is `--`" in text
+    assert "escape hatch for pure-mode objectives" in text
+    assert "Mode parse: paired; objective: <OBJECTIVE>" in text
+    assert "/lifeline:deliver -- pair ..." in text
+
+
 def test_paired_step_2c_guards_all_rehydrated_paths() -> None:
     text = PAIRED_MODE.read_text()
 
@@ -89,6 +98,18 @@ def test_paired_mode_materializes_objective_without_shell_state() -> None:
     assert "$OBJECTIVE` shell variable" in text
     assert "LIFELINE_OBJECTIVE_RAW" not in text
     assert "printf '%s' \"$OBJECTIVE\"" not in text
+
+
+def test_budget_limit_instructions_list_actual_placeholders() -> None:
+    pure = PURE_MODE.read_text()
+    paired = PAIRED_MODE.read_text()
+
+    for text in (pure, paired):
+        assert "substitute only the placeholders that file contains" in text
+        assert "`{{ objective }}`" in text
+        assert "`{{ iter_used }}`" in text
+        assert "`{{ iter_budget }}`" in text
+        assert "substitute the same placeholders as 2a" not in text
 
 
 def test_pure_mode_preflights_continuation_template() -> None:
