@@ -22,6 +22,19 @@ is_valid() {
   [ -f "${1:-}/schemas/grader-output.json" ]
 }
 
+# Verify a candidate workspace is the actual lifeline checkout (not just
+# a repo that happens to have a skills/deliver/ tree). Mirrors the same
+# check the inline resolution code in pure-mode.md / paired-mode.md does
+# — if the script ever gets used in a non-lifeline workspace, this
+# blocks an attacker-controlled grader-output.json or grader-prompt.md
+# from biasing audit verdicts. Cases 1 (env override) and 4 (plugin
+# cache) don't need this — the user opted in explicitly, or the path
+# is rooted in their own claude plugin cache.
+is_lifeline_repo() {
+  [ -f "${1:-}/.claude-plugin/plugin.json" ] && \
+  grep -q '"name"[[:space:]]*:[[:space:]]*"lifeline"' "${1:-}/.claude-plugin/plugin.json" 2>/dev/null
+}
+
 # 1. Env override.
 if [ -n "${LIFELINE_SKILL_DIR:-}" ] && is_valid "$LIFELINE_SKILL_DIR"; then
   printf '%s\n' "$LIFELINE_SKILL_DIR"
@@ -30,15 +43,17 @@ fi
 
 # 2. Project-local. Canonicalize to an absolute path so callers can use
 # the result regardless of their CWD (cases 3 and 4 below already return
-# absolute paths; this keeps the contract uniform).
-if is_valid "skills/deliver"; then
+# absolute paths; this keeps the contract uniform). Gated on
+# is_lifeline_repo so a target repo with an unrelated skills/deliver/
+# tree can't shadow the actual plugin.
+if is_lifeline_repo "." && is_valid "skills/deliver"; then
   printf '%s\n' "$(cd skills/deliver && pwd)"
   exit 0
 fi
 
-# 3. Git root.
+# 3. Git root. Same is_lifeline_repo gating as case 2.
 GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-if [ -n "$GIT_ROOT" ] && is_valid "$GIT_ROOT/skills/deliver"; then
+if [ -n "$GIT_ROOT" ] && is_lifeline_repo "$GIT_ROOT" && is_valid "$GIT_ROOT/skills/deliver"; then
   printf '%s\n' "$GIT_ROOT/skills/deliver"
   exit 0
 fi

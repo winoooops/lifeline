@@ -75,7 +75,7 @@ while IFS='|' read -r slug desc; do
 ---
 description: ${desc}
 ---
-Use the Skill tool to invoke \`lifeline:${slug}\`.
+Use the Skill tool to invoke \`lifeline:${slug}\` with these arguments: \$ARGUMENTS
 EOF
 done <<'SKILLS'
 planner|头脑风暴设计规格并自动运行 Codex 评审

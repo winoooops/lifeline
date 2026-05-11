@@ -99,9 +99,10 @@ If the audit returns **complete**, jump to Step 3 (success). Otherwise, continue
 
 ## Step 3: Final report
 
-Compute elapsed time from `$START_TS` (set in `SKILL.md` Step 1):
+Compute elapsed time. `START_TS` was echoed by `SKILL.md` Step 1; **rehydrate it from the literal value you captured then** (Bash variables don't survive across tool calls — that's why the dispatcher printed it for you to remember):
 
 ```bash
+START_TS=<paste the literal Unix-seconds value SKILL.md Step 1 printed>
 END_TS=$(date +%s)
 ELAPSED=$((END_TS - START_TS))
 MINS=$((ELAPSED / 60))

@@ -30,6 +30,6 @@ Before deciding that the goal is achieved, perform a completion audit against th
 
 Do not rely on intent, partial progress, elapsed effort, memory of earlier work, or a plausible final answer as proof of completion. Only mark the goal achieved when the audit shows that the objective has actually been achieved and no required work remains. If any requirement is missing, incomplete, or unverified, keep working instead of marking the goal complete.
 
-If the audit shows the objective is achieved, stop emitting next-action tool calls and emit the final report described in `SKILL.md` (Step 3) with `status: success`.
+If the audit shows the objective is achieved, stop emitting next-action tool calls and emit the final report described in your mode file's Step 3 (the same file `SKILL.md` Step 2 dispatched you to) with `status: success`.
 
 Do not mark a goal complete merely because the iteration budget is nearly exhausted or because you are stopping work.

@@ -147,35 +147,45 @@ done
 # another. Python's str.replace runs once per placeholder against the
 # ORIGINAL template buffer, so values introduced by one substitution are
 # never re-matched.
-PROMPT=""
-if PROMPT=$(OBJECTIVE="$OBJECTIVE" \
-            GIT_DIFF_HEAD="$GIT_DIFF_HEAD" \
-            UNTRACKED="$UNTRACKED" \
-            GIT_STATUS="$GIT_STATUS" \
-            FILES_TOUCHED="$FILES_TOUCHED" \
-            GRADER_TEMPLATE="$GRADER_TEMPLATE" \
-            python3 - 2>"$SCRATCH/grader-$ITER.render-stderr" <<'PY'
+# Render via files, not env vars. Env vars (along with argv) count
+# toward Linux ARG_MAX (~2 MB), so a large GIT_DIFF_HEAD passed as
+# ENV would fail python3's exec() before any rendering happened. The
+# stdin path below for codex exec is the same fix applied at the
+# next layer.
+RENDER_DIR="$SCRATCH/render-input-$ITER"
+mkdir -p "$RENDER_DIR"
+printf '%s' "$OBJECTIVE"      > "$RENDER_DIR/objective"
+printf '%s' "$GIT_DIFF_HEAD"  > "$RENDER_DIR/git_diff_head"
+printf '%s' "$UNTRACKED"      > "$RENDER_DIR/untracked"
+printf '%s' "$GIT_STATUS"     > "$RENDER_DIR/git_status"
+printf '%s' "$FILES_TOUCHED"  > "$RENDER_DIR/files_touched"
+
+PROMPT_FILE="$SCRATCH/grader-$ITER.prompt"
+: > "$PROMPT_FILE"   # truncate so a stale file doesn't masquerade as success
+if GRADER_TEMPLATE="$GRADER_TEMPLATE" RENDER_DIR="$RENDER_DIR" \
+   python3 - > "$PROMPT_FILE" 2>"$SCRATCH/grader-$ITER.render-stderr" <<'PY'
 import os, re
+d = os.environ['RENDER_DIR']
 template = open(os.environ['GRADER_TEMPLATE']).read()
 mapping = {
-    '{{ objective }}':       os.environ['OBJECTIVE'],
-    '{{ git_diff_head }}':   os.environ['GIT_DIFF_HEAD'],
-    '{{ untracked_files }}': os.environ['UNTRACKED'],
-    '{{ git_status }}':      os.environ['GIT_STATUS'],
-    '{{ files_touched }}':   os.environ['FILES_TOUCHED'],
+    '{{ objective }}':       open(f"{d}/objective").read(),
+    '{{ git_diff_head }}':   open(f"{d}/git_diff_head").read(),
+    '{{ untracked_files }}': open(f"{d}/untracked").read(),
+    '{{ git_status }}':      open(f"{d}/git_status").read(),
+    '{{ files_touched }}':   open(f"{d}/files_touched").read(),
 }
 pattern = re.compile('|'.join(re.escape(k) for k in mapping))
 print(pattern.sub(lambda m: mapping[m.group(0)], template), end='')
 PY
-); then : ; else PROMPT=""; fi
+then : ; fi
 
-# Fail fast on render failure (python3 missing, env-var size limit
-# exceeded, template missing, etc.). Without this guard, an empty PROMPT
-# would be sent to codex and the grader would judge against nothing —
-# silently losing the iteration's evidence and likely returning
-# complete=false (or worse, complete=true on a vacuous prompt).
-if [ -z "$PROMPT" ]; then
-  echo "WARN: grader prompt rendering failed (python3 unavailable, template missing, or env-var size exceeded). See $SCRATCH/grader-$ITER.render-stderr." >&2
+# Fail fast on render failure (python3 missing, template missing, etc.).
+# Without this guard, an empty prompt would be sent to codex and the
+# grader would judge against nothing — silently losing the iteration's
+# evidence and likely returning complete=false (or worse, complete=true
+# on a vacuous prompt).
+if [ ! -s "$PROMPT_FILE" ]; then
+  echo "WARN: grader prompt rendering failed (python3 unavailable, template missing, or render error). See $SCRATCH/grader-$ITER.render-stderr." >&2
   CODEX_EXIT=99   # synthetic — routes through the grader-fallback branch below
 fi
 
@@ -189,13 +199,27 @@ else
 fi
 
 if [ "${CODEX_EXIT:-0}" -ne 99 ]; then
+  # Pass the prompt via stdin (`- ` positional). Linux ARG_MAX (~2 MB
+  # total argv+env) caps how large a single CLI argument can be; a
+  # non-trivial prompt (full git diff plus opted-in untracked file
+  # bodies plus the template) easily exceeds this. Stdin has no
+  # ARG_MAX limit. The prompt was already written to $PROMPT_FILE
+  # above by the file-based renderer.
+  #
+  # `--ephemeral` keeps the grader transcript out of $CODEX_HOME. The
+  # prompt contains the full diff and any opted-in untracked file
+  # bodies, so persisting the session would leak repo evidence to
+  # disk — directly contradicting the no-persistent-state contract
+  # ($SCRATCH cleanup is meaningless if codex still wrote the same
+  # data to ~/.codex/).
   set +e
   $TIMEOUT_PREFIX codex exec \
     --sandbox read-only \
+    --ephemeral \
     --output-schema "$SCHEMA_PATH" \
     --output-last-message "$SCRATCH/grader-$ITER.json" \
-    -- "$PROMPT" \
-    < /dev/null \
+    -- - \
+    < "$PROMPT_FILE" \
     > "$SCRATCH/grader-$ITER.events.log" \
     2> "$SCRATCH/grader-$ITER.stderr.log"
   CODEX_EXIT=$?
@@ -261,9 +285,10 @@ Carry `VERDICT_SOURCE` ("grader" or "self-audit-fallback") forward to Step 3 —
 
 ## Step 3: Final report
 
-Compute elapsed time from `$START_TS` (set in `SKILL.md` Step 1):
+Compute elapsed time. `START_TS` was echoed by `SKILL.md` Step 1; **rehydrate it from the literal value you captured then** (Bash variables don't survive across tool calls — that's why the dispatcher printed it for you to remember):
 
 ```bash
+START_TS=<paste the literal Unix-seconds value SKILL.md Step 1 printed>
 END_TS=$(date +%s)
 ELAPSED=$((END_TS - START_TS))
 MINS=$((ELAPSED / 60))
