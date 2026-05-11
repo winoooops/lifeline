@@ -29,7 +29,7 @@ jobs:
       structured_output: ${{ steps.claude.outputs.structured_output }}
     steps:
       - name: Checkout PR merge commit
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        uses: actions/checkout@v5
         with:
           ref: refs/pull/${{ github.event.pull_request.number }}/merge
 
@@ -50,7 +50,7 @@ jobs:
 
       - name: Run Claude review
         id: claude
-        uses: anthropics/claude-code-action@b112a167ee1f4aa7ad2e3adae255c8c8c69e740b # v1
+        uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
@@ -108,7 +108,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Format and post Claude review
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@v7
         env:
           CLAUDE_STRUCTURED_OUTPUT: ${{ needs.claude-review.outputs.structured_output }}
         with:

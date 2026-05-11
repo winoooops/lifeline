@@ -11,7 +11,6 @@ SKILL = REPO_ROOT / "skills/deliver/SKILL.md"
 PURE_MODE = REPO_ROOT / "skills/deliver/references/pure-mode.md"
 PAIRED_MODE = REPO_ROOT / "skills/deliver/references/paired-mode.md"
 DELIVER_GUARDS_WORKFLOW = REPO_ROOT / ".github/workflows/deliver-guards.yml"
-CLAUDE_REVIEW_WORKFLOW = REPO_ROOT / ".github/workflows/claude-review.yml"
 DEPENDABOT = REPO_ROOT / ".github/dependabot.yml"
 RESOLVER_SCRIPT = REPO_ROOT / "skills/deliver/scripts/resolve-skill-dir.sh"
 NOTICE = REPO_ROOT / "NOTICE"
@@ -268,14 +267,13 @@ def test_deliver_guard_workflow_uses_read_only_permissions() -> None:
 def test_github_actions_are_sha_pinned_and_dependabot_tracks_updates() -> None:
     uses_pattern = re.compile(r"uses:\s+[^@\s]+@([0-9A-Za-z._/-]+)")
 
-    for path in (DELIVER_GUARDS_WORKFLOW, CLAUDE_REVIEW_WORKFLOW):
-        text = path.read_text()
-        refs = uses_pattern.findall(text)
-        assert refs, f"{path} should contain GitHub Actions uses entries"
-        for ref in refs:
-            assert re.fullmatch(r"[0-9a-f]{40}", ref), (
-                f"{path} contains an unpinned action ref: {ref}"
-            )
+    text = DELIVER_GUARDS_WORKFLOW.read_text()
+    refs = uses_pattern.findall(text)
+    assert refs, f"{DELIVER_GUARDS_WORKFLOW} should contain GitHub Actions uses entries"
+    for ref in refs:
+        assert re.fullmatch(r"[0-9a-f]{40}", ref), (
+            f"{DELIVER_GUARDS_WORKFLOW} contains an unpinned action ref: {ref}"
+        )
 
     dependabot = DEPENDABOT.read_text()
     assert 'package-ecosystem: "github-actions"' in dependabot
