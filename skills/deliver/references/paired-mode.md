@@ -343,9 +343,9 @@ fi
 # minimal containers). Conditionally apply it; without timeout the existing
 # Codex CLI behavior still applies — codex itself exits eventually.
 if command -v timeout >/dev/null 2>&1; then
-  TIMEOUT_PREFIX="timeout 300"
+  TIMEOUT_CMD=(timeout 300)
 else
-  TIMEOUT_PREFIX=""
+  TIMEOUT_CMD=()
 fi
 
 if [ "$RENDER_FAILED" -eq 0 ]; then
@@ -363,7 +363,7 @@ if [ "$RENDER_FAILED" -eq 0 ]; then
   # ($SCRATCH cleanup is meaningless if codex still wrote the same
   # data to ~/.codex/).
   set +e
-  $TIMEOUT_PREFIX codex exec \
+  "${TIMEOUT_CMD[@]}" codex exec \
     --sandbox read-only \
     --ephemeral \
     --output-schema "$SCHEMA_PATH" \

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import stat
 import subprocess
 from pathlib import Path
@@ -85,7 +84,6 @@ def _base_env(tmp_path: Path) -> dict[str, str]:
 def _run_resolver(
     kind: str,
     source: Path,
-    tmp_path: Path,
     env: dict[str, str],
 ) -> subprocess.CompletedProcess[str]:
     if kind == "inline":
@@ -101,10 +99,6 @@ def _run_resolver(
         capture_output=True,
         timeout=15,
     )
-
-    scratch = _value_from_output(proc.stdout, "SCRATCH")
-    if scratch:
-        shutil.rmtree(scratch, ignore_errors=True)
 
     return proc
 
@@ -138,7 +132,7 @@ def test_deliver_resolver_mirrors_accept_env_override(
     env = _base_env(tmp_path)
     env["LIFELINE_SKILL_DIR"] = str(skill_dir)
 
-    proc = _run_resolver(*resolver, tmp_path=tmp_path, env=env)
+    proc = _run_resolver(*resolver, env=env)
 
     assert proc.returncode == 0, (
         f"{name} failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
@@ -164,7 +158,7 @@ def test_deliver_resolver_mirrors_pick_newest_cache_directory_and_ignore_files(
     os.utime(cache_root / "new", (2000, 2000))
     os.utime(ds_store, (3000, 3000))
 
-    proc = _run_resolver(*resolver, tmp_path=tmp_path, env=env)
+    proc = _run_resolver(*resolver, env=env)
 
     assert proc.returncode == 0, (
         f"{name} failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
@@ -181,7 +175,7 @@ def test_deliver_resolver_mirrors_do_not_fall_back_to_workspace(
     """Workspace lookup was removed for security; all mirrors must keep it out."""
     env = _base_env(tmp_path)
 
-    proc = _run_resolver(*resolver, tmp_path=tmp_path, env=env)
+    proc = _run_resolver(*resolver, env=env)
 
     assert proc.returncode != 0, (
         f"{name} unexpectedly resolved from workspace:\n{proc.stdout}"

@@ -16,6 +16,7 @@ RESOLVER_SCRIPT = REPO_ROOT / "skills/deliver/scripts/resolve-skill-dir.sh"
 def test_explicit_paired_cap_has_a_maximum_bound() -> None:
     text = SKILL.read_text()
 
+    assert "When ≤ 0: error with `iteration cap must be a positive integer`" in text
     assert "When > 50: error with `iteration cap must be <= 50`" in text
     assert "When 1..50: `CAP = int(second token)`" in text
 
@@ -56,6 +57,15 @@ def test_paired_mode_preflights_required_codex_exec_flags() -> None:
     assert "codex exec --help" in text
     assert "for _flag in --sandbox --ephemeral --output-schema --output-last-message" in text
     assert "codex exec is missing required flag" in text
+
+
+def test_paired_mode_uses_timeout_command_array() -> None:
+    text = PAIRED_MODE.read_text()
+
+    assert "TIMEOUT_PREFIX" not in text
+    assert "TIMEOUT_CMD=(timeout 300)" in text
+    assert "TIMEOUT_CMD=()" in text
+    assert '"${TIMEOUT_CMD[@]}" codex exec' in text
 
 
 def test_grader_unusable_hard_error_prints_scratch_dir_to_stdout() -> None:
