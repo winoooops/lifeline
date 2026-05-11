@@ -27,7 +27,8 @@ Strip leading whitespace. Then:
    - `MODE = paired`
    - If second token parses as **any integer** (positive, zero, or negative):
      - When ≤ 0: error with `iteration cap must be a positive integer` and stop. Do not enter the loop.
-     - When positive: `CAP = int(second token)`, `OBJECTIVE = rest of $ARGUMENTS after the integer`.
+     - When > 50: error with `iteration cap must be <= 50` and stop. Do not enter the loop.
+     - When 1..50: `CAP = int(second token)`, `OBJECTIVE = rest of $ARGUMENTS after the integer`.
    - If second token does **not** parse as an integer: `CAP = 20`, `OBJECTIVE = rest of $ARGUMENTS after pair`.
 2. Else: `MODE = pure`, `CAP = 20`, `OBJECTIVE = full $ARGUMENTS`.
 3. If `OBJECTIVE` is empty after stripping, use `AskUserQuestion` to collect one before proceeding.

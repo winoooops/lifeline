@@ -34,7 +34,7 @@ Pure mode does **not** use a `$SCRATCH` directory — there are no per-iteration
 # MIRROR OF skills/deliver/scripts/resolve-skill-dir.sh — keep in sync.
 # Same lookup logic also lives in paired-mode.md Step 1. When changing
 # any of these (sentinel filename, ordering, .DS_Store filter, etc.)
-# update all THREE copies; there is no CI drift guard yet.
+# update all THREE copies. Guarded by harness/test_deliver_resolver_mirrors.py.
 # ──────────────────────────────────────────────────────────────────────
 SKILL_DIR=""
 # Validity sentinel is `schemas/grader-output.json` for consistency with
@@ -123,18 +123,22 @@ Capture the printed `ITER`. If `ITER < CAP`, loop back to 2a and use that captur
 
 ## Step 3: Final report
 
-Compute elapsed time. `START_TS` was echoed by `SKILL.md` Step 1; **rehydrate it from the literal value you captured then** (Bash variables don't survive across tool calls — that's why the dispatcher printed it for you to remember):
+Compute elapsed time. `START_TS` was echoed by `SKILL.md` Step 1; **rehydrate it from the literal value you captured then** (Bash variables don't survive across tool calls — that's why the dispatcher printed it for you to remember). Also rehydrate `ITER` so success reports use a bash-computed iteration count rather than mental arithmetic:
 
 ```bash
 START_TS=<paste the literal Unix-seconds value SKILL.md Step 1 printed>
+ITER=<paste the literal ITER value from Step 1 or the previous Step 2d echo>
+: "${ITER:?ITER must be rehydrated before computing the final report}"
 END_TS=$(date +%s)
 ELAPSED=$((END_TS - START_TS))
 MINS=$((ELAPSED / 60))
 SECS=$((ELAPSED % 60))
-echo "${MINS}m ${SECS}s"
+COMPLETED_ITERATIONS=$((ITER + 1))
+echo "ELAPSED=${MINS}m ${SECS}s"
+echo "COMPLETED_ITERATIONS=$COMPLETED_ITERATIONS"
 ```
 
-Capture the literal `${MINS}m ${SECS}s` string for the report.
+Capture the value after `ELAPSED=` for the `<MINS>m <SECS>s` placeholders. Capture the value after `COMPLETED_ITERATIONS=` for success reports; budget-limited reports still use `CAP` directly.
 
 ### Success path
 
@@ -144,7 +148,7 @@ When the audit returns complete, stop emitting tool calls and emit:
 Deliveries done in <MINS>m <SECS>s.
 status: success
 mode: pure
-iterations: <ITER + 1>
+iterations: <COMPLETED_ITERATIONS>
 elapsed: <MINS>m <SECS>s
 evidence_checked:
   - <each item from your audit notes>

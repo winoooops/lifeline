@@ -40,7 +40,7 @@ Run via the Bash tool. Resolution is **inline** here (not via the resolver scrip
 # MIRROR OF skills/deliver/scripts/resolve-skill-dir.sh — keep in sync.
 # Same lookup logic also lives in pure-mode.md Step 1. When changing
 # any of these (sentinel filename, ordering, .DS_Store filter, etc.)
-# update all THREE copies; there is no CI drift guard yet.
+# update all THREE copies. Guarded by harness/test_deliver_resolver_mirrors.py.
 # ──────────────────────────────────────────────────────────────────────
 SKILL_DIR=""
 if [ -n "${LIFELINE_SKILL_DIR:-}" ] && [ -f "$LIFELINE_SKILL_DIR/schemas/grader-output.json" ]; then
@@ -163,6 +163,9 @@ GRADER_TEMPLATE=<paste the literal GRADER_TEMPLATE value from Step 1>
 GRADER_UNUSABLE_STREAK=<paste the current grader-unusable streak, e.g. 0 or 2>
 : "${ITER:?ITER must be rehydrated from the previous echo; see Step 2c preamble}"
 : "${SCRATCH:?SCRATCH must be rehydrated from Step 1 echo; see Step 2c preamble}"
+: "${SKILL_DIR:?SKILL_DIR must be rehydrated from Step 1 echo; see Step 2c preamble}"
+: "${SCHEMA_PATH:?SCHEMA_PATH must be rehydrated from Step 1 echo; see Step 2c preamble}"
+: "${GRADER_TEMPLATE:?GRADER_TEMPLATE must be rehydrated from Step 1 echo; see Step 2c preamble}"
 : "${GRADER_UNUSABLE_STREAK:?GRADER_UNUSABLE_STREAK must be rehydrated from GRADER_UNUSABLE_STREAK_INIT or the previous Step 2c echo; see Step 2c preamble}"
 
 EXPECTED_GRADER_UNUSABLE_STREAK=$(cat "$SCRATCH/grader-unusable-streak" 2>/dev/null || true)
@@ -468,18 +471,22 @@ If `ITER < CAP`, loop back to 2a (and rehydrate the new `ITER` value at the top 
 
 ## Step 3: Final report
 
-Compute elapsed time. `START_TS` was echoed by `SKILL.md` Step 1; **rehydrate it from the literal value you captured then** (Bash variables don't survive across tool calls — that's why the dispatcher printed it for you to remember):
+Compute elapsed time. `START_TS` was echoed by `SKILL.md` Step 1; **rehydrate it from the literal value you captured then** (Bash variables don't survive across tool calls — that's why the dispatcher printed it for you to remember). Also rehydrate `ITER` so success reports use a bash-computed iteration count rather than mental arithmetic:
 
 ```bash
 START_TS=<paste the literal Unix-seconds value SKILL.md Step 1 printed>
+ITER=<paste the literal ITER value from Step 1 or the previous Step 2d echo>
+: "${ITER:?ITER must be rehydrated before computing the final report}"
 END_TS=$(date +%s)
 ELAPSED=$((END_TS - START_TS))
 MINS=$((ELAPSED / 60))
 SECS=$((ELAPSED % 60))
-echo "${MINS}m ${SECS}s"
+COMPLETED_ITERATIONS=$((ITER + 1))
+echo "ELAPSED=${MINS}m ${SECS}s"
+echo "COMPLETED_ITERATIONS=$COMPLETED_ITERATIONS"
 ```
 
-Capture the literal `${MINS}m ${SECS}s` string for the report.
+Capture the value after `ELAPSED=` for the `<MINS>m <SECS>s` placeholders. Capture the value after `COMPLETED_ITERATIONS=` for success reports; budget-limited reports still use `CAP` directly.
 
 ### Success path
 
@@ -492,7 +499,7 @@ Deliveries done in <MINS>m <SECS>s.
 status: success
 mode: paired
 verdict_source: codex grader
-iterations: <ITER + 1>
+iterations: <COMPLETED_ITERATIONS>
 elapsed: <MINS>m <SECS>s
 evidence_checked:
   - <each entry from the final grader-N.json (.evidence_checked[])>
@@ -505,7 +512,7 @@ Deliveries done in <MINS>m <SECS>s.
 status: success
 mode: paired
 verdict_source: in-context fallback (codex was unavailable for this iteration)
-iterations: <ITER + 1>
+iterations: <COMPLETED_ITERATIONS>
 elapsed: <MINS>m <SECS>s
 evidence_checked:
   - <each item from your in-context audit notes for the completing iteration>

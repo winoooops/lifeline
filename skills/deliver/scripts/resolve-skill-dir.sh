@@ -39,8 +39,9 @@ set -euo pipefail
 #
 # When changing the sentinel filename, ordering, or .DS_Store filter,
 # update ALL THREE copies (pure-mode.md, paired-mode.md, and this
-# script). There is no CI drift guard yet — runtime correctness
-# depends on the mode files, not this script.
+# script). The mirror behavior is guarded by
+# harness/test_deliver_resolver_mirrors.py — runtime correctness depends
+# on the mode files, not this script.
 # ────────────────────────────────────────────────────────────────────
 
 is_valid() {

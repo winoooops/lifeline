@@ -333,13 +333,18 @@ For each finding in the cycle's finding table, in order:
    - **SKIP** — explain why in the finding's `fix_summary` field. Valid
      reasons: false positive, intentional pattern with rationale, out of
      scope (the finding flagged adjacent untouched code in violation of
-     the SCOPE BOUNDARY RULE).
+     the SCOPE BOUNDARY RULE). SKIP is not a deferral mechanism: "real
+     debt", "recurring deferred debt", "needs refactor", "fix later", or
+     "see existing banner/comment" are not valid skip reasons.
 4. After the change, set `finding.status = 'fixed'` (or `'skipped'`) and
    `finding.fix_summary = <one-sentence description>`.
 
 **Rules:**
 
 - Fix **only** what the review identified. No drive-by refactoring.
+- If the same real finding reappears after a prior skip, treat the prior
+  skip as wrong: fix it in this cycle, or loud-fail and ask the operator
+  for an explicit WONTFIX / known-debt decision before committing.
 - Never introduce new issues while fixing existing ones — Step 5's codex
   verify catches this if it slips through, but the discipline is to think
   about new-issue risk at fix time.
