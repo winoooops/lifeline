@@ -100,16 +100,19 @@ ITER=0   # explicit initial value, echoed below so the first iteration
          # alongside the other captures (Step 2d echoes the incremented
          # ITER for subsequent iterations).
 GRADER_UNUSABLE_STREAK=0
+printf '%s\n' "$GRADER_UNUSABLE_STREAK" > "$SCRATCH/grader-unusable-streak"
 
 echo "SCRATCH=$SCRATCH"
 echo "SKILL_DIR=$SKILL_DIR"
 echo "SCHEMA_PATH=$SCHEMA_PATH"
 echo "GRADER_TEMPLATE=$GRADER_TEMPLATE"
 echo "ITER=$ITER"
-echo "GRADER_UNUSABLE_STREAK=$GRADER_UNUSABLE_STREAK"
+echo "GRADER_UNUSABLE_STREAK_INIT=$GRADER_UNUSABLE_STREAK"
 ```
 
-Capture all six values (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE`, `ITER`, `GRADER_UNUSABLE_STREAK`) from this call's stdout and use them as literal paths/integers in every subsequent Bash call.
+Capture all six values (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE`, `ITER`, `GRADER_UNUSABLE_STREAK_INIT`) from this call's stdout and use them as literal paths/integers in every subsequent Bash call.
+
+Use `GRADER_UNUSABLE_STREAK_INIT` only to seed iteration 0. After Step 2c has run once, the scratch-backed streak file and the latest Step 2c `GRADER_UNUSABLE_STREAK=...` echo become the source of truth.
 
 If `$SKILL_DIR` ends up empty, the grader template is missing, jq isn't on PATH, or python3 isn't on PATH, **report a startup error and stop**. Do not enter the loop. Silent fallback to pure mode is the bug we are explicitly guarding against.
 
@@ -136,7 +139,7 @@ Optionally maintain a mental list of files you touched this iteration — it get
 
 ### 2c. Run the codex grader
 
-Build the grader prompt and invoke `codex exec`. **Rehydrate `ITER` as a shell variable** at the top of the block — the same `VAR=<paste literal value>` pattern used for `SCRATCH`/`SKILL_DIR`/`SCHEMA_PATH`/`GRADER_TEMPLATE`/`GRADER_UNUSABLE_STREAK`. The current ITER value comes from Step 1's `echo "ITER=$ITER"` (for the first iteration) or from the previous iteration's Step 2d post-increment echo. The grader-unusable streak comes from Step 1 initially, then from the previous Step 2c verdict-parsing stdout. Do NOT inline-substitute `$ITER` throughout the block — that breaks the `${ITER:?}` guard (it would become `${1:?}` etc., where `$N` is the empty positional parameter). Set ITER once at the top; let bash do the variable expansion below.
+Build the grader prompt and invoke `codex exec`. **Rehydrate `ITER` as a shell variable** at the top of the block — the same `VAR=<paste literal value>` pattern used for `SCRATCH`/`SKILL_DIR`/`SCHEMA_PATH`/`GRADER_TEMPLATE`/`GRADER_UNUSABLE_STREAK`. The current ITER value comes from Step 1's `echo "ITER=$ITER"` (for the first iteration) or from the previous iteration's Step 2d post-increment echo. The grader-unusable streak starts from Step 1's `GRADER_UNUSABLE_STREAK_INIT=0` only on iteration 0; after any Step 2c run, use the latest `GRADER_UNUSABLE_STREAK=...` emitted by Step 2c and do not reuse the init value. Do NOT inline-substitute `$ITER` throughout the block — that breaks the `${ITER:?}` guard (it would become `${1:?}` etc., where `$N` is the empty positional parameter). Set ITER once at the top; let bash do the variable expansion below.
 
 The `${ITER:?}` guard exits with an error if rehydration was missed, converting silent per-iteration path collisions (`grader-.json`, `render-input-/` overwriting on every iteration) into a loud startup failure. The `${SCRATCH:?}` guard does the same for the scratch root before any per-iteration artifact paths are built.
 
@@ -154,10 +157,20 @@ SCRATCH=<paste the literal SCRATCH value from Step 1>
 SKILL_DIR=<paste the literal SKILL_DIR value from Step 1>
 SCHEMA_PATH=<paste the literal SCHEMA_PATH value from Step 1>
 GRADER_TEMPLATE=<paste the literal GRADER_TEMPLATE value from Step 1>
-GRADER_UNUSABLE_STREAK=<paste the literal GRADER_UNUSABLE_STREAK value from Step 1 or previous Step 2c, e.g. 0 or 2>
+# Iteration 0 only: paste GRADER_UNUSABLE_STREAK_INIT from Step 1.
+# Later iterations: paste the latest GRADER_UNUSABLE_STREAK emitted by
+# Step 2c; do NOT reuse GRADER_UNUSABLE_STREAK_INIT.
+GRADER_UNUSABLE_STREAK=<paste the current grader-unusable streak, e.g. 0 or 2>
 : "${ITER:?ITER must be rehydrated from the previous echo; see Step 2c preamble}"
 : "${SCRATCH:?SCRATCH must be rehydrated from Step 1 echo; see Step 2c preamble}"
-: "${GRADER_UNUSABLE_STREAK:?GRADER_UNUSABLE_STREAK must be rehydrated from the previous echo; see Step 2c preamble}"
+: "${GRADER_UNUSABLE_STREAK:?GRADER_UNUSABLE_STREAK must be rehydrated from GRADER_UNUSABLE_STREAK_INIT or the previous Step 2c echo; see Step 2c preamble}"
+
+EXPECTED_GRADER_UNUSABLE_STREAK=$(cat "$SCRATCH/grader-unusable-streak" 2>/dev/null || true)
+: "${EXPECTED_GRADER_UNUSABLE_STREAK:?missing scratch-backed grader unusable streak; rerun Step 1}"
+if [ "$GRADER_UNUSABLE_STREAK" != "$EXPECTED_GRADER_UNUSABLE_STREAK" ]; then
+  echo "ERROR: stale GRADER_UNUSABLE_STREAK rehydration: pasted $GRADER_UNUSABLE_STREAK but scratch records $EXPECTED_GRADER_UNUSABLE_STREAK. Use the latest Step 2c echo, not GRADER_UNUSABLE_STREAK_INIT." >&2
+  exit 1
+fi
 
 # Tracked-file diff. `git diff HEAD` omits untracked file CONTENTS — for
 # objectives that create new files, the grader otherwise sees only the
@@ -241,8 +254,9 @@ printf '%s' "$FILES_TOUCHED"  > "$RENDER_DIR/files_touched"
 
 PROMPT_FILE="$SCRATCH/grader-$ITER.prompt"
 : > "$PROMPT_FILE"   # truncate so a stale file doesn't masquerade as success
-if GRADER_TEMPLATE="$GRADER_TEMPLATE" RENDER_DIR="$RENDER_DIR" \
-   python3 - > "$PROMPT_FILE" 2>"$SCRATCH/grader-$ITER.render-stderr" <<'PY'
+set +e
+GRADER_TEMPLATE="$GRADER_TEMPLATE" RENDER_DIR="$RENDER_DIR" \
+  python3 - > "$PROMPT_FILE" 2>"$SCRATCH/grader-$ITER.render-stderr" <<'PY'
 import os, re, html
 d = os.environ['RENDER_DIR']
 # Force UTF-8 — system default encoding (locale-derived) raises
@@ -280,15 +294,17 @@ mapping = {
 pattern = re.compile('|'.join(re.escape(k) for k in mapping))
 print(pattern.sub(lambda m: mapping[m.group(0)], template), end='')
 PY
-then : ; fi
+_py_rc=$?
+set -e
 
 # Fail fast on render failure (python3 missing, template missing, etc.).
 # Without this guard, an empty prompt would be sent to codex and the
 # grader would judge against nothing — silently losing the iteration's
 # evidence and likely returning complete=false (or worse, complete=true
-# on a vacuous prompt).
+# on a vacuous prompt). Checking python's exit code also catches partial
+# output written before a renderer abort.
 RENDER_FAILED=0
-if [ ! -s "$PROMPT_FILE" ]; then
+if [ "$_py_rc" -ne 0 ] || [ ! -s "$PROMPT_FILE" ]; then
   echo "WARN: grader prompt rendering failed (python3 unavailable, template missing, or render error). See $SCRATCH/grader-$ITER.render-stderr." >&2
   RENDER_FAILED=1
 fi
@@ -384,6 +400,7 @@ if [ "$CODEX_EXIT" -eq 0 ] && [ -s "$SCRATCH/grader-$ITER.json" ] \
   # instead of being treated as success.
   COMPLETE=$(jq -r '.complete' "$SCRATCH/grader-$ITER.json")
   GRADER_UNUSABLE_STREAK=0
+  printf '%s\n' "$GRADER_UNUSABLE_STREAK" > "$SCRATCH/grader-unusable-streak"
   echo "GRADER_UNUSABLE_STREAK=$GRADER_UNUSABLE_STREAK"
   if [ "$COMPLETE" = "true" ]; then
     VERDICT="complete"
@@ -402,6 +419,7 @@ if [ "$CODEX_EXIT" -eq 0 ] && [ -s "$SCRATCH/grader-$ITER.json" ] \
 else
   VERDICT_SOURCE="self-audit-fallback"
   GRADER_UNUSABLE_STREAK=$((GRADER_UNUSABLE_STREAK + 1))
+  printf '%s\n' "$GRADER_UNUSABLE_STREAK" > "$SCRATCH/grader-unusable-streak"
   echo "GRADER_UNUSABLE_STREAK=$GRADER_UNUSABLE_STREAK"
   # Stdout contract: every parsed value goes to stdout (the agent reads
   # stdout for downstream reasoning). Stderr is for human-only warning
