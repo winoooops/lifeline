@@ -40,13 +40,11 @@ def test_inline_resolver_extraction_excludes_surrounding_initialization() -> Non
     paired = _resolver_bash_block(PAIRED_MODE)
 
     assert "ITER=0" not in pure
-    assert 'echo "SKILL_DIR=' in pure
     assert "SCHEMA_PATH=" not in pure
     assert "mktemp" not in pure
 
     assert "SCHEMA_PATH=" not in paired
     assert "GRADER_TEMPLATE=" not in paired
-    assert 'echo "SKILL_DIR=' in paired
     assert "command -v jq" not in paired
     assert "command -v python3" not in paired
     assert "mktemp" not in paired

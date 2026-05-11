@@ -139,6 +139,14 @@ def test_resolver_mirrors_have_explicit_boundary_sentinels() -> None:
     assert "# END RESOLVER" in RESOLVER_SCRIPT.read_text()
 
 
+def test_mode_initialization_echoes_resolved_skill_dir_after_resolver() -> None:
+    for path in (PURE_MODE, PAIRED_MODE):
+        text = path.read_text()
+        after_resolver = text[text.index("# END RESOLVER") :]
+
+        assert 'echo "SKILL_DIR=$SKILL_DIR"' in after_resolver
+
+
 def test_resolver_script_validity_check_matches_inline_empty_path_behavior() -> None:
     text = RESOLVER_SCRIPT.read_text()
 
