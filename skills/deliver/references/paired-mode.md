@@ -146,7 +146,12 @@ The block below opens with `: "${ITER:?...}"` — a shell parameter expansion th
 GIT_DIFF_HEAD=$(git diff HEAD 2>/dev/null || true)
 UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null || true)
 GIT_STATUS=$(git status --short 2>/dev/null || true)
-FILES_TOUCHED="<bulleted list you maintained mentally — or empty if you did not track. For out-of-repo objectives, include the full path here so the grader knows where to inspect>"
+FILES_TOUCHED=""   # leave empty by default; if your objective is out-of-repo
+                   # (paths the grader needs to cat/ls — e.g. /tmp/foo.html),
+                   # set this to a newline-separated list of those paths so
+                   # the grader knows where to inspect. The grader treats
+                   # empty `files_touched` as "no orientation hint, fall
+                   # back to git evidence."
 
 # UNTRACKED_INCLUDE — bash array of paths whose CONTENT (not just
 # filename) the grader needs to see. The agent populates this each
@@ -455,16 +460,16 @@ evidence_checked:
 note: paired mode degraded to self-audit for the final iteration — re-run when codex is reachable for an independent verdict.
 ```
 
-Then clean up the scratch dir. **Rehydrate `$SCRATCH` first** — this block runs in a fresh Bash tool call so the variable from Step 1 isn't in scope; without the rehydration, `rm -rf ""` is a no-op and the scratch dir leaks to /tmp on every successful run.
+Then clean up the scratch dir. **Rehydrate `$SCRATCH` first** — this block runs in a fresh Bash tool call so the variable from Step 1 isn't in scope; without the rehydration, `rm -rf ""` is a no-op and the scratch dir leaks on every successful run.
 
-The `[[ ... ]]` prefix check converts a misquoted/wrong rehydration into a visible warning instead of a destructive `rm -rf` against an unrelated path. mktemp guarantees the path matches `/tmp/lifeline-deliver-XXXXXX`, so the guard rejects anything else:
+The substring check `*"/lifeline-deliver-"*` converts a misquoted/wrong rehydration into a visible warning instead of a destructive `rm -rf`. mktemp's path uses `$TMPDIR` (which differs by OS — `/tmp/lifeline-deliver-XXXXXX` on Linux, `/var/folders/.../T/lifeline-deliver-XXXXXX` on macOS), so we anchor on the `lifeline-deliver-` prefix segment rather than a fixed `/tmp/` root:
 
 ```bash
 SCRATCH=<paste the literal scratch path SCRATCH= line from Step 1 stdout>
-if [[ "$SCRATCH" == /tmp/lifeline-deliver-* ]]; then
+if [[ -n "$SCRATCH" && "$SCRATCH" == *"/lifeline-deliver-"* ]]; then
   rm -rf "$SCRATCH"
 else
-  echo "WARN: $SCRATCH does not match /tmp/lifeline-deliver-* — skipping cleanup to avoid destroying the wrong path." >&2
+  echo "WARN: $SCRATCH does not contain '/lifeline-deliver-' — skipping cleanup to avoid destroying the wrong path." >&2
 fi
 ```
 
