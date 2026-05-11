@@ -69,6 +69,8 @@ if [ -z "$SKILL_DIR" ]; then
 fi
 # END RESOLVER
 
+[ -f "$SKILL_DIR/references/continuation.md" ] || { echo "ERROR: continuation.md not found at $SKILL_DIR/references/continuation.md" >&2; exit 1; }
+
 ITER=0   # explicit initial value; echoed so the first loop has the
          # same mechanical counter handoff as subsequent Step 2d echoes.
 

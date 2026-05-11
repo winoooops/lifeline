@@ -74,6 +74,13 @@ def test_paired_mode_preflights_required_codex_exec_flags() -> None:
     assert "codex exec is missing required flag" in text
 
 
+def test_pure_mode_preflights_continuation_template() -> None:
+    text = PURE_MODE.read_text()
+
+    assert '[ -f "$SKILL_DIR/references/continuation.md" ] ||' in text
+    assert "continuation.md not found" in text
+
+
 def test_paired_mode_uses_timeout_command_array() -> None:
     text = PAIRED_MODE.read_text()
 
