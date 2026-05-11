@@ -55,9 +55,10 @@ done
 mkdir -p "$(dirname "$OUTPUT")"
 
 # Render iteration placeholders first, then insert the objective from the
-# code-generated OBJECTIVE_HTML file. This prevents a user objective that
-# contains literal strings like "{{ iter_used }}" from being substituted as a
-# trusted template placeholder after insertion.
+# code-generated OBJECTIVE_HTML file in one split/rejoin pass. This prevents a
+# user objective that contains literal strings like "{{ iter_used }}" or
+# "{{ objective }}" from being substituted as a trusted template placeholder
+# after insertion.
 awk \
   -v objective_file="$OBJECTIVE_HTML_FILE" \
   -v iter_used="$ITER_USED" \
@@ -75,8 +76,13 @@ BEGIN {
   gsub(/\{\{ iter_used \}\}/, iter_used)
   gsub(/\{\{ iter_budget \}\}/, iter_budget)
   gsub(/\{\{ iter_remaining \}\}/, iter_remaining)
-  while ((at = index($0, "{{ objective }}")) > 0) {
-    $0 = substr($0, 1, at - 1) objective substr($0, at + 15)
+  n = split($0, parts, /\{\{ objective \}\}/)
+  if (n > 1) {
+    rendered = parts[1]
+    for (i = 2; i <= n; i++) {
+      rendered = rendered objective parts[i]
+    }
+    $0 = rendered
   }
   print
 }

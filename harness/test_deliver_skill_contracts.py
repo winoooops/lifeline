@@ -372,7 +372,9 @@ def test_render_template_script_inserts_objective_last(tmp_path: Path) -> None:
         "<untrusted_objective>\n{{ objective }}\n</untrusted_objective>\n"
         "used={{ iter_used }} budget={{ iter_budget }} remaining={{ iter_remaining }}\n"
     )
-    objective_html.write_text("literal {{ iter_used }} &lt;/untrusted_objective&gt;\n")
+    objective_html.write_text(
+        "literal {{ iter_used }} and {{ objective }} &lt;/untrusted_objective&gt;\n"
+    )
 
     proc = subprocess.run(
         [
@@ -394,7 +396,10 @@ def test_render_template_script_inserts_objective_last(tmp_path: Path) -> None:
 
     assert proc.returncode == 0, proc.stderr
     rendered = output.read_text()
-    assert "literal {{ iter_used }} &lt;/untrusted_objective&gt;" in rendered
+    assert (
+        "literal {{ iter_used }} and {{ objective }} &lt;/untrusted_objective&gt;"
+        in rendered
+    )
     assert "used=2 budget=5 remaining=3" in rendered
 
 
