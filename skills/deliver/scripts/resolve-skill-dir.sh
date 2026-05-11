@@ -51,6 +51,15 @@ is_valid() {
   [ -f "$1/schemas/grader-output.json" ]
 }
 
+version_key() {
+  local _major _minor _patch _rest
+  IFS=. read -r _major _minor _patch _rest <<< "$1"
+  case "$_major" in ""|*[!0-9]*) _major=0 ;; esac
+  case "$_minor" in ""|*[!0-9]*) _minor=0 ;; esac
+  case "$_patch" in ""|*[!0-9]*) _patch=0 ;; esac
+  printf '%010d.%010d.%010d.%s\n' "$((10#$_major))" "$((10#$_minor))" "$((10#$_patch))" "${_rest:-}"
+}
+
 # 1. Env override.
 if [ -n "${LIFELINE_SKILL_DIR:-}" ] && is_valid "$LIFELINE_SKILL_DIR"; then
   printf 'SKILL_DIR=%s\n' "$LIFELINE_SKILL_DIR"
@@ -60,7 +69,7 @@ fi
 # 2. Plugin cache (newest-installed wins).
 CACHE_ROOT="${HOME}/.claude/plugins/cache/lifeline/lifeline"
 if [ -d "$CACHE_ROOT" ]; then
-  # Newest-installed wins by mtime, with a lexicographic directory-name
+  # Newest-installed wins by mtime, with a zero-padded version-key
   # tiebreaker for equal mtimes. Use Bash's portable -nt check instead
   # of `sort -V` (GNU-only, missing on default macOS/BSD). Filter to
   # directories only — on macOS Finder writes `.DS_Store` with a newer
@@ -72,7 +81,7 @@ if [ -d "$CACHE_ROOT" ]; then
       LATEST="$_entry"
     elif [ ! "$CACHE_ROOT/$LATEST" -nt "$CACHE_ROOT/$_entry" ] \
       && [ ! "$CACHE_ROOT/$_entry" -nt "$CACHE_ROOT/$LATEST" ] \
-      && [[ "$_entry" > "$LATEST" ]]; then
+      && [[ "$(version_key "$_entry")" > "$(version_key "$LATEST")" ]]; then
       LATEST="$_entry"
     fi
   done < <(ls -1 "$CACHE_ROOT" 2>/dev/null)

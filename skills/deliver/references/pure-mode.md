@@ -38,6 +38,14 @@ Pure mode does **not** use a `$SCRATCH` directory — there are no per-iteration
 # ──────────────────────────────────────────────────────────────────────
 # BEGIN RESOLVER
 SKILL_DIR=""
+version_key() {
+  local _major _minor _patch _rest
+  IFS=. read -r _major _minor _patch _rest <<< "$1"
+  case "$_major" in ""|*[!0-9]*) _major=0 ;; esac
+  case "$_minor" in ""|*[!0-9]*) _minor=0 ;; esac
+  case "$_patch" in ""|*[!0-9]*) _patch=0 ;; esac
+  printf '%010d.%010d.%010d.%s\n' "$((10#$_major))" "$((10#$_minor))" "$((10#$_patch))" "${_rest:-}"
+}
 # Validity sentinel is `schemas/grader-output.json` for consistency with
 # paired-mode.md and resolve-skill-dir.sh — the canonical "is this a
 # real deliver skill dir?" check across the codebase. Pure mode doesn't
@@ -48,7 +56,7 @@ if [ -n "${LIFELINE_SKILL_DIR:-}" ] && [ -f "$LIFELINE_SKILL_DIR/schemas/grader-
 else
   _cache="$HOME/.claude/plugins/cache/lifeline/lifeline"
   if [ -d "$_cache" ]; then
-    # Newest-installed wins by mtime, with a lexicographic directory-name
+    # Newest-installed wins by mtime, with a zero-padded version-key
     # tiebreaker for equal mtimes. Use Bash's portable -nt check instead
     # of `sort -V` (GNU-only, missing on default macOS/BSD). Filter to
     # directories only — on macOS Finder writes `.DS_Store` with a newer
@@ -60,7 +68,7 @@ else
         _latest="$_e"
       elif [ ! "$_cache/$_latest" -nt "$_cache/$_e" ] \
         && [ ! "$_cache/$_e" -nt "$_cache/$_latest" ] \
-        && [[ "$_e" > "$_latest" ]]; then
+        && [[ "$(version_key "$_e")" > "$(version_key "$_latest")" ]]; then
         _latest="$_e"
       fi
     done < <(ls -1 "$_cache" 2>/dev/null)

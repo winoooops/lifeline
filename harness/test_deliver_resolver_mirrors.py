@@ -155,14 +155,14 @@ def test_deliver_resolver_mirrors_break_equal_mtime_ties_by_name(
     name: str,
     resolver: tuple[str, Path],
 ) -> None:
-    """Equal-mtime cache dirs resolve deterministically by version-name tie-break."""
+    """Equal-mtime cache dirs resolve by numeric version-name tie-break."""
     env = _base_env(tmp_path)
     cache_root = Path(env["HOME"]) / ".claude/plugins/cache/lifeline/lifeline"
-    old_skill = _make_deliver_skill(cache_root / "0.0.1/skills/deliver")
-    new_skill = _make_deliver_skill(cache_root / "0.0.2/skills/deliver")
+    old_skill = _make_deliver_skill(cache_root / "0.0.9/skills/deliver")
+    new_skill = _make_deliver_skill(cache_root / "0.0.10/skills/deliver")
 
-    os.utime(cache_root / "0.0.1", (1000, 1000))
-    os.utime(cache_root / "0.0.2", (1000, 1000))
+    os.utime(cache_root / "0.0.9", (1000, 1000))
+    os.utime(cache_root / "0.0.10", (1000, 1000))
 
     proc = _run_resolver(*resolver, env=env)
 
