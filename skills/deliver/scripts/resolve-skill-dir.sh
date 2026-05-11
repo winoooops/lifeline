@@ -30,6 +30,16 @@
 
 set -euo pipefail
 
+# ────────────────────────────────────────────────────────────────────
+# AUTHORITATIVE VERSION of the deliver-skill-dir lookup.
+# Mirrored inline (without the LIFELINE_SKILL_DIR test-only subshell
+# spawn cost) in skills/deliver/references/pure-mode.md and
+# paired-mode.md, which can't depend on this script being present at
+# runtime (target repos with the installed plugin don't have it). When
+# changing the sentinel filename, ordering, or .DS_Store filter,
+# update all THREE copies; there is no CI drift guard yet.
+# ────────────────────────────────────────────────────────────────────
+
 is_valid() {
   [ -f "${1:-}/schemas/grader-output.json" ]
 }

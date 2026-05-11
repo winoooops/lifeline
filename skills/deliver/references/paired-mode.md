@@ -35,6 +35,13 @@ Run via the Bash tool. Resolution is **inline** here (not via the resolver scrip
 # `LIFELINE_SKILL_DIR=$(pwd)/skills/deliver` (or the absolute equivalent)
 # in their shell to make local edits effective without re-syncing the
 # plugin cache after every change.
+#
+# ──────────────────────────────────────────────────────────────────────
+# MIRROR OF skills/deliver/scripts/resolve-skill-dir.sh — keep in sync.
+# Same lookup logic also lives in pure-mode.md Step 1. When changing
+# any of these (sentinel filename, ordering, .DS_Store filter, etc.)
+# update all THREE copies; there is no CI drift guard yet.
+# ──────────────────────────────────────────────────────────────────────
 SKILL_DIR=""
 if [ -n "${LIFELINE_SKILL_DIR:-}" ] && [ -f "$LIFELINE_SKILL_DIR/schemas/grader-output.json" ]; then
   SKILL_DIR="$LIFELINE_SKILL_DIR"
@@ -272,10 +279,13 @@ if [ "$RENDER_FAILED" -eq 0 ]; then
 else
   # Render failed; codex was skipped. The verdict-parsing block needs a
   # non-zero CODEX_EXIT so its `[ "$CODEX_EXIT" -eq 0 ]` test routes to
-  # the grader-fallback branch. -1 is unambiguously not a real exit
-  # code from any process; the dedicated RENDER_FAILED flag carries
-  # the "why" so the diagnostic message can be specific.
-  CODEX_EXIT=-1
+  # the grader-fallback branch. 254 stays inside the POSIX exit-code
+  # range (0-255) — unlike -1 which is out-of-range and would confuse
+  # any future per-exit-code branch (e.g. `[ -eq 124 ]` for timeout).
+  # 254 is rare enough not to clash with codex's real exit codes; the
+  # dedicated RENDER_FAILED flag carries the "why" so diagnostics can
+  # be specific.
+  CODEX_EXIT=254
 fi
 echo "CODEX_EXIT=$CODEX_EXIT"        # echo for the verdict-parsing block
 
@@ -363,7 +373,14 @@ Carry `VERDICT_SOURCE` ("grader" or "self-audit-fallback") forward to Step 3 —
 
 ### 2d. Increment
 
-`ITER = ITER + 1`. If `ITER < CAP`, loop back to 2a.
+Increment then **echo the new value** so the next iteration's Bash tool call can rehydrate it from stdout — same echo-and-rehydrate pattern as `SCRATCH` / `SKILL_DIR` / `SCHEMA_PATH` / `GRADER_TEMPLATE`. Without this echo, `$ITER` is a convention-only mental counter; if substituted wrong (or as a literal `$ITER`), every iteration's grader files collapse to the same path (`grader-.json`) and budget_limited postmortem loses prior iterations.
+
+```bash
+ITER=$((ITER + 1))
+echo "ITER=$ITER"
+```
+
+If `ITER < CAP`, loop back to 2a (and rehydrate the new `ITER` value at the top of 2c, alongside `SCRATCH` etc.).
 
 ## Step 3: Final report
 

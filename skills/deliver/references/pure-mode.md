@@ -29,6 +29,13 @@ Pure mode does **not** use a `$SCRATCH` directory — there are no per-iteration
 # `LIFELINE_SKILL_DIR=$(pwd)/skills/deliver` (or the absolute equivalent)
 # in their shell to make local edits effective without re-syncing the
 # plugin cache after every change.
+#
+# ──────────────────────────────────────────────────────────────────────
+# MIRROR OF skills/deliver/scripts/resolve-skill-dir.sh — keep in sync.
+# Same lookup logic also lives in paired-mode.md Step 1. When changing
+# any of these (sentinel filename, ordering, .DS_Store filter, etc.)
+# update all THREE copies; there is no CI drift guard yet.
+# ──────────────────────────────────────────────────────────────────────
 SKILL_DIR=""
 # Validity sentinel is `schemas/grader-output.json` for consistency with
 # paired-mode.md and resolve-skill-dir.sh — the canonical "is this a
