@@ -93,7 +93,9 @@ case "$OBJECTIVE_RAW" in
     ;;
 esac
 OBJECTIVE_HTML=$(printf '%s' "$OBJECTIVE_RAW" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
-OBJECTIVE_HTML_DELIM="LIFELINE_OBJECTIVE_HTML_$(date +%s)_$$"
+# Delimiter contains literal angle brackets; OBJECTIVE_HTML cannot,
+# because Step 1 escaped every `<` and `>` in the objective.
+OBJECTIVE_HTML_DELIM="LIFELINE_OBJECTIVE_HTML<$(date +%s):$$>"
 
 ITER=0   # explicit initial value; echoed so the first loop has the
          # same mechanical counter handoff as subsequent Step 2d echoes.

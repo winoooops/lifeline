@@ -279,7 +279,7 @@ done
 # stdin path below for codex exec is the same fix applied at the
 # next layer.
 RENDER_DIR="$SCRATCH/render-input-$ITER"
-mkdir -p "$RENDER_DIR"
+mkdir -p "$RENDER_DIR" || { echo "ERROR: failed to create render dir at $RENDER_DIR" >&2; exit 1; }
 # Paste the objective exactly as parsed in SKILL.md Step 0. Do not rely
 # on a `$OBJECTIVE` shell variable — Bash state does not persist between
 # tool calls. Before running this block, replace the assignment value
@@ -291,7 +291,7 @@ if [ "$OBJECTIVE_DELIM" = "__OBJECTIVE_DELIM_PLACEHOLDER__" ]; then
   echo "ERROR: replace the objective delimiter placeholder before running paired mode Step 2c." >&2
   exit 1
 fi
-cat > "$RENDER_DIR/objective" <<'__OBJECTIVE_DELIM_PLACEHOLDER__'
+cat > "$RENDER_DIR/objective" <<'__OBJECTIVE_DELIM_PLACEHOLDER__' || { echo "ERROR: failed to write objective file at $RENDER_DIR/objective" >&2; exit 1; }
 <paste the exact OBJECTIVE from SKILL.md Step 0>
 __OBJECTIVE_DELIM_PLACEHOLDER__
 if grep -qF '<paste the exact OBJECTIVE from SKILL.md Step 0>' "$RENDER_DIR/objective"; then

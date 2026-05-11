@@ -98,6 +98,8 @@ def test_paired_mode_materializes_objective_without_shell_state() -> None:
     assert "$OBJECTIVE` shell variable" in text
     assert "LIFELINE_OBJECTIVE_RAW" not in text
     assert "printf '%s' \"$OBJECTIVE\"" not in text
+    assert "failed to create render dir" in text
+    assert "failed to write objective file" in text
 
 
 def test_budget_limit_instructions_list_actual_placeholders() -> None:
@@ -130,7 +132,8 @@ def test_pure_mode_computes_escaped_objective_once() -> None:
     assert "OBJECTIVE_RAW=$(cat <<'__OBJECTIVE_DELIM_PLACEHOLDER__'" in text
     assert "objective placeholder was not replaced before running pure mode Step 1" in text
     assert "sed -e 's/&/\\&amp;/g' -e 's/</\\&lt;/g' -e 's/>/\\&gt;/g'" in text
-    assert "OBJECTIVE_HTML_DELIM=" in text
+    assert 'OBJECTIVE_HTML_DELIM="LIFELINE_OBJECTIVE_HTML<$(date +%s):$$>"' in text
+    assert "OBJECTIVE_HTML cannot" in text
     assert "printf 'OBJECTIVE_HTML<<%s\\n'" in text
     assert "captured `OBJECTIVE_HTML`" in text
     assert "do not substitute the raw `$OBJECTIVE`" in text
