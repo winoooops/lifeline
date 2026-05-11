@@ -202,10 +202,6 @@ fi
 # no-index synthetic diff for each untracked file.
 GIT_DIFF_HEAD=$(git diff HEAD 2>/dev/null || true)
 _MAX_GIT_DIFF_HEAD_BYTES=524288
-_git_diff_head_bytes=$(printf '%s' "$GIT_DIFF_HEAD" | wc -c | tr -d '[:space:]')
-if [ "$_git_diff_head_bytes" -gt "$_MAX_GIT_DIFF_HEAD_BYTES" ]; then
-  GIT_DIFF_HEAD="$(printf '%s' "$GIT_DIFF_HEAD" | head -c "$_MAX_GIT_DIFF_HEAD_BYTES" | sed '$d')"$'\n'"--- diff truncated at ${_MAX_GIT_DIFF_HEAD_BYTES}B on a line boundary ---"
-fi
 UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null || true)
 GIT_STATUS=$(git status --short 2>/dev/null || true)
 FILES_TOUCHED=""   # leave empty by default; if your objective is out-of-repo
@@ -232,8 +228,9 @@ FILES_TOUCHED=""   # leave empty by default; if your objective is out-of-repo
 # paths containing spaces remain single elements.
 [ -z "${UNTRACKED_INCLUDE+x}" ] && UNTRACKED_INCLUDE=()
 
-# Per-file size cap (16 KB) and total cap (256 KB raw) leave room for
-# HTML escaping expansion before the content reaches the grader prompt.
+# Per-file size cap (16 KB) and total cap (256 KB raw) bound opt-in
+# untracked input; the final combined GIT_DIFF_HEAD cap below bounds
+# the actual diff evidence before it reaches the grader prompt.
 _MAX_UNTRACKED_BYTES=16384
 _MAX_UNTRACKED_TOTAL_BYTES=262144
 _total_untracked_bytes=0
@@ -261,6 +258,11 @@ for _f in "${UNTRACKED_INCLUDE[@]}"; do
   GIT_DIFF_HEAD+=$'\n'
   GIT_DIFF_HEAD+=$(git diff --no-index --no-color -- /dev/null "$_f" 2>/dev/null || true)
 done
+
+_git_diff_head_bytes=$(printf '%s' "$GIT_DIFF_HEAD" | wc -c | tr -d '[:space:]')
+if [ "$_git_diff_head_bytes" -gt "$_MAX_GIT_DIFF_HEAD_BYTES" ]; then
+  GIT_DIFF_HEAD="$(printf '%s' "$GIT_DIFF_HEAD" | head -c "$_MAX_GIT_DIFF_HEAD_BYTES" | sed '$d')"$'\n'"--- diff truncated at ${_MAX_GIT_DIFF_HEAD_BYTES}B on a line boundary ---"
+fi
 
 # Render the grader template via a single-pass Python substitution.
 #

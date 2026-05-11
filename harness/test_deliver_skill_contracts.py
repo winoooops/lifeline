@@ -74,6 +74,10 @@ def test_paired_git_diff_head_has_size_cap() -> None:
     assert "tr -d '[:space:]'" in text
     assert "head -c \"$_MAX_GIT_DIFF_HEAD_BYTES\" | sed '$d'" in text
     assert "--- diff truncated at ${_MAX_GIT_DIFF_HEAD_BYTES}B on a line boundary ---" in text
+    assert "final combined GIT_DIFF_HEAD cap below bounds" in text
+    assert text.index("_git_diff_head_bytes=$(printf '%s' \"$GIT_DIFF_HEAD\"") > text.index(
+        "GIT_DIFF_HEAD+=$(git diff --no-index --no-color -- /dev/null \"$_f\""
+    )
 
 
 def test_paired_mode_preflights_required_codex_exec_flags() -> None:
