@@ -14,31 +14,25 @@ Resolution is **inline** here (not via the resolver script) for the same reason 
 SCRATCH=$(mktemp -d -t lifeline-deliver-XXXXXX)
 echo "SCRATCH=$SCRATCH"
 
-# Resolve the deliver skill dir. Order: env override, project-local
-# (only when the workspace is verifiably the lifeline checkout — the
-# .claude-plugin/plugin.json must declare name=lifeline), git-root
-# (same verification), plugin cache.
+# Resolve the deliver skill dir. Order: env override, plugin cache.
 #
-# Why the verification? When this skill runs as an installed plugin in
-# an arbitrary target repo, that repo could happen to contain a
-# `skills/deliver/references/continuation.md` (a fork of lifeline, an
-# unrelated `skills/` convention, or a workspace crafted to substitute
-# its own audit checklist). The plugin-manifest check ensures we only
-# use a workspace copy when it's the lifeline repo itself.
-_is_lifeline_repo() {
-  [ -f "$1/.claude-plugin/plugin.json" ] && \
-  grep -q '"name"[[:space:]]*:[[:space:]]*"lifeline"' "$1/.claude-plugin/plugin.json" 2>/dev/null
-}
-
+# **Workspace lookup is intentionally absent.** An earlier version of
+# this code looked at `./skills/deliver` and `<git-root>/skills/deliver`
+# and tried to gate them on `_is_lifeline_repo()` (grep `"name":
+# "lifeline"` in `.claude-plugin/plugin.json`). That check is trivially
+# bypassed: any adversarial target repo can drop a 1-line plugin.json
+# with the sentinel string and then control `continuation.md`, biasing
+# the audit checklist toward whatever it wants. There is no robust way
+# to verify a workspace is the lifeline checkout from inside a
+# workspace-resident file. So we simply don't look at the workspace.
+#
+# **Lifeline developers** working on the deliver skill set
+# `LIFELINE_SKILL_DIR=$(pwd)/skills/deliver` (or the absolute equivalent)
+# in their shell to make local edits effective without re-syncing the
+# plugin cache after every change.
 SKILL_DIR=""
 if [ -n "${LIFELINE_SKILL_DIR:-}" ] && [ -f "$LIFELINE_SKILL_DIR/references/continuation.md" ]; then
   SKILL_DIR="$LIFELINE_SKILL_DIR"
-elif _is_lifeline_repo "." && [ -f "./skills/deliver/references/continuation.md" ]; then
-  SKILL_DIR="./skills/deliver"
-elif _gr=$(git rev-parse --show-toplevel 2>/dev/null) \
-     && _is_lifeline_repo "$_gr" \
-     && [ -f "$_gr/skills/deliver/references/continuation.md" ]; then
-  SKILL_DIR="$_gr/skills/deliver"
 else
   _cache="$HOME/.claude/plugins/cache/lifeline/lifeline"
   if [ -d "$_cache" ]; then
