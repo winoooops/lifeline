@@ -59,4 +59,10 @@ Each mode file is self-contained — do not flip back to this SKILL.md once you'
 
 ## Smoke tests
 
-See `docs/superpowers/specs/2026-05-10-lifeline-deliver-design.md` (Testing strategy section).
+Run the focused deliver guards:
+
+```bash
+python -m pytest -q harness/test_deliver_resolver_mirrors.py harness/test_deliver_skill_contracts.py
+```
+
+CI runs the same guard set via `.github/workflows/deliver-guards.yml`.

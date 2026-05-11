@@ -74,6 +74,15 @@ def test_paired_mode_preflights_required_codex_exec_flags() -> None:
     assert "codex exec is missing required flag" in text
 
 
+def test_paired_mode_materializes_objective_without_shell_state() -> None:
+    text = PAIRED_MODE.read_text()
+
+    assert "cat > \"$RENDER_DIR/objective\" <<'LIFELINE_OBJECTIVE_RAW'" in text
+    assert "Do not rely" in text
+    assert "$OBJECTIVE` shell variable" in text
+    assert "printf '%s' \"$OBJECTIVE\"" not in text
+
+
 def test_pure_mode_preflights_continuation_template() -> None:
     text = PURE_MODE.read_text()
 
@@ -193,3 +202,12 @@ def test_apache_license_text_is_distributed_with_notice() -> None:
     assert "Apache License" in license_text
     assert "Version 2.0, January 2004" in license_text
     assert "END OF TERMS AND CONDITIONS" in license_text
+
+
+def test_smoke_tests_section_points_to_existing_guards() -> None:
+    text = SKILL.read_text()
+
+    assert "docs/superpowers/specs" not in text
+    assert "harness/test_deliver_resolver_mirrors.py" in text
+    assert "harness/test_deliver_skill_contracts.py" in text
+    assert ".github/workflows/deliver-guards.yml" in text

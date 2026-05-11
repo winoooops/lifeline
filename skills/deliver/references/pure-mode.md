@@ -72,8 +72,10 @@ fi
 [ -f "$SKILL_DIR/references/continuation.md" ] || { echo "ERROR: continuation.md not found at $SKILL_DIR/references/continuation.md" >&2; exit 1; }
 [ -f "$SKILL_DIR/references/budget_limit.md" ] || { echo "ERROR: budget_limit.md not found at $SKILL_DIR/references/budget_limit.md" >&2; exit 1; }
 
-# Paste the objective exactly as parsed in SKILL.md Step 0. Choose a
-# here-doc delimiter that does not occur anywhere in the objective.
+# Paste the objective exactly as parsed in SKILL.md Step 0. If the
+# objective contains LIFELINE_OBJECTIVE_RAW on its own line, replace
+# the here-doc delimiter below with a collision-free token before
+# running this block.
 OBJECTIVE_RAW=$(cat <<'LIFELINE_OBJECTIVE_RAW'
 <paste the exact OBJECTIVE from SKILL.md Step 0>
 LIFELINE_OBJECTIVE_RAW

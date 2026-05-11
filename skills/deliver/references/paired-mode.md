@@ -264,8 +264,8 @@ done
 # Render the grader template via a single-pass Python substitution.
 #
 # An earlier version of this used five sequential `${PROMPT//pat/repl}`
-# bash expansions. That has a cross-injection bug: if $OBJECTIVE (or any
-# evidence value) contains the literal text of a later placeholder
+# bash expansions. That has a cross-injection bug: if the objective (or
+# any evidence value) contains the literal text of a later placeholder
 # — e.g. an objective of "Implement {{ git_diff_head }} parser" — that
 # text survives the first substitution and gets replaced with real
 # evidence in a subsequent pass, smuggling content from one slot into
@@ -279,7 +279,13 @@ done
 # next layer.
 RENDER_DIR="$SCRATCH/render-input-$ITER"
 mkdir -p "$RENDER_DIR"
-printf '%s' "$OBJECTIVE"      > "$RENDER_DIR/objective"
+# Paste the objective exactly as parsed in SKILL.md Step 0. Do not rely
+# on a `$OBJECTIVE` shell variable — Bash state does not persist between
+# tool calls. If the objective contains LIFELINE_OBJECTIVE_RAW on its own
+# line, replace the here-doc delimiter below with a collision-free token.
+cat > "$RENDER_DIR/objective" <<'LIFELINE_OBJECTIVE_RAW'
+<paste the exact OBJECTIVE from SKILL.md Step 0>
+LIFELINE_OBJECTIVE_RAW
 printf '%s' "$GIT_DIFF_HEAD"  > "$RENDER_DIR/git_diff_head"
 printf '%s' "$UNTRACKED"      > "$RENDER_DIR/untracked"
 printf '%s' "$GIT_STATUS"     > "$RENDER_DIR/git_status"
