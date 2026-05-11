@@ -70,15 +70,28 @@ fi
 # END RESOLVER
 
 [ -f "$SKILL_DIR/references/continuation.md" ] || { echo "ERROR: continuation.md not found at $SKILL_DIR/references/continuation.md" >&2; exit 1; }
+[ -f "$SKILL_DIR/references/budget_limit.md" ] || { echo "ERROR: budget_limit.md not found at $SKILL_DIR/references/budget_limit.md" >&2; exit 1; }
+
+# Paste the objective exactly as parsed in SKILL.md Step 0. Choose a
+# here-doc delimiter that does not occur anywhere in the objective.
+OBJECTIVE_RAW=$(cat <<'LIFELINE_OBJECTIVE_RAW'
+<paste the exact OBJECTIVE from SKILL.md Step 0>
+LIFELINE_OBJECTIVE_RAW
+)
+OBJECTIVE_HTML=$(printf '%s' "$OBJECTIVE_RAW" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
+OBJECTIVE_HTML_DELIM="LIFELINE_OBJECTIVE_HTML_$(date +%s)_$$"
 
 ITER=0   # explicit initial value; echoed so the first loop has the
          # same mechanical counter handoff as subsequent Step 2d echoes.
 
 echo "SKILL_DIR=$SKILL_DIR"
 echo "ITER=$ITER"
+printf 'OBJECTIVE_HTML<<%s\n' "$OBJECTIVE_HTML_DELIM"
+printf '%s\n' "$OBJECTIVE_HTML"
+printf '%s\n' "$OBJECTIVE_HTML_DELIM"
 ```
 
-Capture `SKILL_DIR` and `ITER` from this call's stdout. Use `SKILL_DIR` as a literal path in every subsequent Bash call (including the per-iteration `Read` calls for `continuation.md` and `budget_limit.md`). Use the captured `ITER` as the source of truth for loop placeholders and budget checks until Step 2d echoes the next value. `$SKILL_DIR` is read-only — pure mode never writes inside the skill dir.
+Capture `SKILL_DIR`, `ITER`, and the heredoc-style `OBJECTIVE_HTML` block from this call's stdout. Use `SKILL_DIR` as a literal path in every subsequent Bash call (including the per-iteration `Read` calls for `continuation.md` and `budget_limit.md`). Use the captured `OBJECTIVE_HTML` value for every `{{ objective }}` substitution; do not substitute the raw `$OBJECTIVE` into a prompt wrapper. Use the captured `ITER` as the source of truth for loop placeholders and budget checks until Step 2d echoes the next value. `$SKILL_DIR` is read-only — pure mode never writes inside the skill dir.
 
 If `$SKILL_DIR` is empty, **report a startup error and stop**. Continuing without it would mean every iteration silently fails to load the audit checklist.
 
@@ -90,7 +103,7 @@ While `ITER < CAP`:
 
 Read `$SKILL_DIR/references/continuation.md` (the literal path you captured in Step 1). Substitute placeholders in your reasoning context:
 
-- `{{ objective }}` → HTML-escaped `$OBJECTIVE` (`&` → `&amp;`, `<` → `&lt;`, `>` → `&gt;`) so a literal `</untrusted_objective>` inside the user's objective stays data and cannot close the wrapper in `continuation.md`
+- `{{ objective }}` → captured `OBJECTIVE_HTML` from Step 1. It is already HTML-escaped (`&` → `&amp;`, `<` → `&lt;`, `>` → `&gt;`) so a literal `</untrusted_objective>` inside the user's objective stays data and cannot close the wrapper in `continuation.md`
 - `{{ iter_used }}` → current `$ITER` (from Step 1's `ITER=0` echo for the first loop, then from the previous Step 2d echo)
 - `{{ iter_budget }}` → `$CAP`
 - `{{ iter_remaining }}` → `$((CAP - ITER))`
@@ -166,7 +179,7 @@ evidence_checked:
 
 ### Budget-limited path
 
-When `ITER == CAP` without a complete verdict, read `$SKILL_DIR/references/budget_limit.md` (the literal path you captured in Step 1), substitute the same placeholders as 2a (including the HTML-escaped objective), and use it for one wrap-up turn. Then emit:
+When `ITER == CAP` without a complete verdict, read `$SKILL_DIR/references/budget_limit.md` (the literal path you captured in Step 1), substitute the same placeholders as 2a (including captured `OBJECTIVE_HTML`), and use it for one wrap-up turn. Then emit:
 
 ```
 Deliveries halted at iteration cap (<MINS>m <SECS>s elapsed).
