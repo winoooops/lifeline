@@ -125,19 +125,25 @@ Optionally maintain a mental list of files you touched this iteration — it get
 
 ### 2c. Run the codex grader
 
-Build the grader prompt and invoke `codex exec`. **`$ITER` in the bash block below must be substituted with the current loop counter as a bare integer** (e.g. `0`, `1`, `2`) when you write each Bash tool call. ITER IS echoed elsewhere — by Step 1 (initial `ITER=0`) and by Step 2d (post-increment) — but those echoes are how you *know* the value to substitute; the value itself doesn't carry into this fresh shell. Without literal substitution, every iteration's files collapse to the same path (`grader-.json`, `render-input-/`), silently overwriting prior iterations' grader verdicts and event logs and breaking `budget_limited` postmortem inspection.
+Build the grader prompt and invoke `codex exec`. **Rehydrate `ITER` as a shell variable** at the top of the block — the same `VAR=<paste literal value>` pattern used for `SCRATCH`/`SKILL_DIR`/`SCHEMA_PATH`/`GRADER_TEMPLATE`. The current ITER value comes from Step 1's `echo "ITER=$ITER"` (for the first iteration) or from the previous iteration's Step 2d post-increment echo. Do NOT inline-substitute `$ITER` throughout the block — that breaks the `${ITER:?}` guard (it would become `${1:?}` etc., where `$N` is the empty positional parameter). Set ITER once at the top; let bash do the variable expansion below.
 
-The block below opens with `: "${ITER:?...}"` — a shell parameter expansion that exits with an error if you forgot to substitute or pasted nothing. This converts silent path-collapse into a loud startup failure. (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE` are also stdout-echoed; rehydrate them the same way at the top of the block.)
+The `${ITER:?}` guard exits with an error if rehydration was missed, converting silent per-iteration path collisions (`grader-.json`, `render-input-/` overwriting on every iteration) into a loud startup failure.
 
 ```bash
-# Required-substitution guard. ITER must be a literal integer (the
-# current loop counter from Step 1's initial echo or Step 2d's
-# post-increment echo). The :?... expansion exits with an error if
-# the value is unset or empty — converting silent per-iteration
-# path collisions (every grader-.json, render-input-/ overlapping)
-# into an obvious startup failure. SCRATCH and friends should be
-# similarly rehydrated as literals from Step 1's stdout.
-: "${ITER:?must be substituted with the current iteration integer (0, 1, 2, …); see Step 2c preamble}"
+# Rehydrate ITER as a shell variable (same pattern as SCRATCH below).
+# The value comes from Step 1's `echo "ITER=$ITER"` (iteration 0) or
+# the previous iteration's Step 2d post-increment echo. Do NOT do
+# `s/$ITER/0/g` inline through the block — that breaks the :? guard
+# (`${0:?}` resolves to the shell name; `${1:?}` to empty positional).
+# The :? expansion below exits with an error if you forgot to set
+# ITER, converting silent per-iteration path collisions into a loud
+# startup failure.
+ITER=<paste the literal ITER value from the previous echo, e.g. ITER=0 or ITER=3>
+SCRATCH=<paste the literal SCRATCH value from Step 1>
+SKILL_DIR=<paste the literal SKILL_DIR value from Step 1>
+SCHEMA_PATH=<paste the literal SCHEMA_PATH value from Step 1>
+GRADER_TEMPLATE=<paste the literal GRADER_TEMPLATE value from Step 1>
+: "${ITER:?ITER must be rehydrated from the previous echo; see Step 2c preamble}"
 
 # Tracked-file diff. `git diff HEAD` omits untracked file CONTENTS — for
 # objectives that create new files, the grader otherwise sees only the
@@ -405,9 +411,10 @@ Carry `VERDICT_SOURCE` ("grader" or "self-audit-fallback") forward to Step 3 —
 
 ### 2d. Increment
 
-Increment then **echo the new value** so the next iteration's Bash tool call can rehydrate it from stdout — same echo-and-rehydrate pattern as `SCRATCH` / `SKILL_DIR` / `SCHEMA_PATH` / `GRADER_TEMPLATE`. Without this echo, `$ITER` is a convention-only mental counter; if substituted wrong (or as a literal `$ITER`), every iteration's grader files collapse to the same path (`grader-.json`) and budget_limited postmortem loses prior iterations.
+Rehydrate `ITER` from the previous echo, increment, then echo the new value — same echo-and-rehydrate pattern as `SCRATCH` / `SKILL_DIR` / `SCHEMA_PATH` / `GRADER_TEMPLATE`. Without rehydrating first, bash treats unset `$ITER` as `0`, so `$((ITER + 1))` always evaluates to `1` regardless of how many iterations have actually run — the counter stalls at 1 and the loop never advances toward `CAP`.
 
 ```bash
+ITER=<paste the literal ITER value from the previous echo, e.g. ITER=0 or ITER=2>
 ITER=$((ITER + 1))
 echo "ITER=$ITER"
 ```
