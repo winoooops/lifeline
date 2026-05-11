@@ -49,16 +49,22 @@ if [ -n "${LIFELINE_SKILL_DIR:-}" ] && [ -f "$LIFELINE_SKILL_DIR/schemas/grader-
 else
   _cache="$HOME/.claude/plugins/cache/lifeline/lifeline"
   if [ -d "$_cache" ]; then
-    # Newest-installed wins. Use mtime ordering (portable) instead of
-    # `sort -V` which is GNU-only and missing on default macOS/BSD.
-    # Filter to directories only — `ls -1t` lists files too, and on
-    # macOS Finder writes `.DS_Store` with a newer mtime than the
-    # version subdirs whenever the user opens the cache in Finder.
-    # Pipe-while-loop picks the first directory entry.
+    # Newest-installed wins by mtime, with a lexicographic directory-name
+    # tiebreaker for equal mtimes. Use Bash's portable -nt check instead
+    # of `sort -V` (GNU-only, missing on default macOS/BSD). Filter to
+    # directories only — on macOS Finder writes `.DS_Store` with a newer
+    # mtime than the version subdirs whenever the user browses the cache.
     _latest=""
     while IFS= read -r _e; do
-      [ -d "$_cache/$_e" ] && _latest="$_e" && break
-    done < <(ls -1t "$_cache" 2>/dev/null)
+      [ -d "$_cache/$_e" ] || continue
+      if [ -z "$_latest" ] || [ "$_cache/$_e" -nt "$_cache/$_latest" ]; then
+        _latest="$_e"
+      elif [ ! "$_cache/$_latest" -nt "$_cache/$_e" ] \
+        && [ ! "$_cache/$_e" -nt "$_cache/$_latest" ] \
+        && [[ "$_e" > "$_latest" ]]; then
+        _latest="$_e"
+      fi
+    done < <(ls -1 "$_cache" 2>/dev/null)
     if [ -n "$_latest" ] && [ -f "$_cache/$_latest/skills/deliver/schemas/grader-output.json" ]; then
       SKILL_DIR="$_cache/$_latest/skills/deliver"
     fi
@@ -66,7 +72,7 @@ else
 fi
 
 if [ -z "$SKILL_DIR" ]; then
-  echo "ERROR: could not resolve skills/deliver. Set LIFELINE_SKILL_DIR or install the plugin via /plugin install lifeline." >&2
+  echo "ERROR: could not resolve skills/deliver. Required sentinel: schemas/grader-output.json; runtime templates also require references/continuation.md, references/budget_limit.md, and references/grader-prompt.md. Set LIFELINE_SKILL_DIR or install the plugin via /plugin install lifeline." >&2
   exit 1
 fi
 # END RESOLVER
@@ -75,6 +81,8 @@ SCHEMA_PATH="$SKILL_DIR/schemas/grader-output.json"
 GRADER_TEMPLATE="$SKILL_DIR/references/grader-prompt.md"
 [ -f "$SCHEMA_PATH" ] || { echo "ERROR: grader schema not found at $SCHEMA_PATH" >&2; exit 1; }
 [ -f "$GRADER_TEMPLATE" ] || { echo "ERROR: grader template not found at $GRADER_TEMPLATE" >&2; exit 1; }
+[ -f "$SKILL_DIR/references/continuation.md" ] || { echo "ERROR: continuation.md not found at $SKILL_DIR/references/continuation.md" >&2; exit 1; }
+[ -f "$SKILL_DIR/references/budget_limit.md" ] || { echo "ERROR: budget_limit.md not found at $SKILL_DIR/references/budget_limit.md" >&2; exit 1; }
 
 # Paste the objective exactly as parsed in SKILL.md Step 0. Replace the
 # single-quoted placeholder below with the exact objective as a Bash
@@ -297,7 +305,7 @@ _validated_files_touched=""
 while IFS= read -r _path || [ -n "$_path" ]; do
   [ -z "$_path" ] && continue
   case "$_path" in
-    *"/../"*|../*|*/..|..|~*|/etc/*|/proc/*|/sys/*|/dev/*|/run/secrets/*|*.env*|*.pem|*.key|.ssh/*|*/.ssh/*|.aws/*|*/.aws/*|*id_rsa*|*id_ed25519*)
+    *"/../"*|../*|*/..|..|~*|/etc/*|/proc/*|/sys/*|/dev/*|/run/secrets/*|*.env*|*.npmrc*|*.netrc*|*.pypirc*|*.git-credentials*|credentials|*/credentials|*.pem|*.key|.ssh/*|*/.ssh/*|.aws/*|*/.aws/*|*id_rsa*|*id_ed25519*)
       echo "WARN: skipping unsafe FILES_TOUCHED path: $_path" >&2
       continue
       ;;

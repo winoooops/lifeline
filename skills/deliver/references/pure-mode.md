@@ -48,15 +48,22 @@ if [ -n "${LIFELINE_SKILL_DIR:-}" ] && [ -f "$LIFELINE_SKILL_DIR/schemas/grader-
 else
   _cache="$HOME/.claude/plugins/cache/lifeline/lifeline"
   if [ -d "$_cache" ]; then
-    # Newest-installed wins. Use mtime ordering (portable) instead of
-    # `sort -V` which is GNU-only and missing on default macOS/BSD.
-    # Filter to directories only — `ls -1t` lists files too, and on
-    # macOS Finder writes `.DS_Store` with a newer mtime than the
-    # version subdirs whenever the user opens the cache in Finder.
+    # Newest-installed wins by mtime, with a lexicographic directory-name
+    # tiebreaker for equal mtimes. Use Bash's portable -nt check instead
+    # of `sort -V` (GNU-only, missing on default macOS/BSD). Filter to
+    # directories only — on macOS Finder writes `.DS_Store` with a newer
+    # mtime than the version subdirs whenever the user browses the cache.
     _latest=""
     while IFS= read -r _e; do
-      [ -d "$_cache/$_e" ] && _latest="$_e" && break
-    done < <(ls -1t "$_cache" 2>/dev/null)
+      [ -d "$_cache/$_e" ] || continue
+      if [ -z "$_latest" ] || [ "$_cache/$_e" -nt "$_cache/$_latest" ]; then
+        _latest="$_e"
+      elif [ ! "$_cache/$_latest" -nt "$_cache/$_e" ] \
+        && [ ! "$_cache/$_e" -nt "$_cache/$_latest" ] \
+        && [[ "$_e" > "$_latest" ]]; then
+        _latest="$_e"
+      fi
+    done < <(ls -1 "$_cache" 2>/dev/null)
     if [ -n "$_latest" ] && [ -f "$_cache/$_latest/skills/deliver/schemas/grader-output.json" ]; then
       SKILL_DIR="$_cache/$_latest/skills/deliver"
     fi
@@ -64,7 +71,7 @@ else
 fi
 
 if [ -z "$SKILL_DIR" ]; then
-  echo "ERROR: could not resolve skills/deliver. Set LIFELINE_SKILL_DIR or install the plugin via /plugin install lifeline." >&2
+  echo "ERROR: could not resolve skills/deliver. Required sentinel: schemas/grader-output.json; runtime templates also require references/continuation.md and references/budget_limit.md. Set LIFELINE_SKILL_DIR or install the plugin via /plugin install lifeline." >&2
   exit 1
 fi
 # END RESOLVER

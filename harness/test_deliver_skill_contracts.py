@@ -88,6 +88,10 @@ def test_paired_mode_preflights_required_codex_exec_flags() -> None:
     text = PAIRED_MODE.read_text()
 
     assert '[ -f "$SCHEMA_PATH" ] || { echo "ERROR: grader schema not found' in text
+    assert '[ -f "$SKILL_DIR/references/continuation.md" ] ||' in text
+    assert "continuation.md not found" in text
+    assert '[ -f "$SKILL_DIR/references/budget_limit.md" ] ||' in text
+    assert "budget_limit.md not found" in text
     assert "codex exec --help" in text
     assert "for _flag in --sandbox --ephemeral --output-schema --output-last-message" in text
     assert "codex exec is missing required flag" in text
@@ -125,7 +129,7 @@ def test_paired_files_touched_has_path_allowlist() -> None:
     assert "_validated_files_touched=" in paired
     assert "skipping unsafe FILES_TOUCHED path" in paired
     assert "skipping FILES_TOUCHED path outside repo/tmp allowlist" in paired
-    assert '*"/../"*|../*|*/..|..|~*|/etc/*|/proc/*|/sys/*|/dev/*|/run/secrets/*|*.env*|*.pem|*.key|.ssh/*|*/.ssh/*|.aws/*|*/.aws/*|*id_rsa*|*id_ed25519*' in paired
+    assert '*"/../"*|../*|*/..|..|~*|/etc/*|/proc/*|/sys/*|/dev/*|/run/secrets/*|*.env*|*.npmrc*|*.netrc*|*.pypirc*|*.git-credentials*|credentials|*/credentials|*.pem|*.key|.ssh/*|*/.ssh/*|.aws/*|*/.aws/*|*id_rsa*|*id_ed25519*' in paired
     assert '"$PWD"/*|./*|[!/]*)' in paired
     assert "/tmp/*|/var/tmp/*" in paired
     assert "drops `..`, system/secrets prefixes" in prompt
@@ -280,6 +284,7 @@ def test_resolver_script_emits_skill_dir_assignment() -> None:
     assert "Prints SKILL_DIR=<resolved path> to stdout" in text
     assert "printf 'SKILL_DIR=%s\\n'" in text
     assert "printf '%s\\n' \"$LIFELINE_SKILL_DIR\"" not in text
+    assert "Required sentinel: schemas/grader-output.json" in text
 
 
 def test_resolver_script_validity_check_matches_inline_empty_path_behavior() -> None:

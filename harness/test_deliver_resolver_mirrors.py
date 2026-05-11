@@ -150,6 +150,30 @@ def test_deliver_resolver_mirrors_pick_newest_cache_directory_and_ignore_files(
 
 
 @pytest.mark.parametrize("name, resolver", RESOLVERS.items())
+def test_deliver_resolver_mirrors_break_equal_mtime_ties_by_name(
+    tmp_path: Path,
+    name: str,
+    resolver: tuple[str, Path],
+) -> None:
+    """Equal-mtime cache dirs resolve deterministically by version-name tie-break."""
+    env = _base_env(tmp_path)
+    cache_root = Path(env["HOME"]) / ".claude/plugins/cache/lifeline/lifeline"
+    old_skill = _make_deliver_skill(cache_root / "0.0.1/skills/deliver")
+    new_skill = _make_deliver_skill(cache_root / "0.0.2/skills/deliver")
+
+    os.utime(cache_root / "0.0.1", (1000, 1000))
+    os.utime(cache_root / "0.0.2", (1000, 1000))
+
+    proc = _run_resolver(*resolver, env=env)
+
+    assert proc.returncode == 0, (
+        f"{name} failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
+    assert _resolved_skill_dir(proc) == str(new_skill)
+    assert _resolved_skill_dir(proc) != str(old_skill)
+
+
+@pytest.mark.parametrize("name, resolver", RESOLVERS.items())
 def test_deliver_resolver_mirrors_do_not_fall_back_to_workspace(
     tmp_path: Path,
     name: str,
@@ -164,3 +188,4 @@ def test_deliver_resolver_mirrors_do_not_fall_back_to_workspace(
         f"{name} unexpectedly resolved from workspace:\n{proc.stdout}"
     )
     assert "could not resolve" in proc.stderr.lower()
+    assert "schemas/grader-output.json" in proc.stderr
