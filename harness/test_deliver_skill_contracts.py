@@ -246,6 +246,30 @@ def test_smoke_tests_section_points_to_existing_guards() -> None:
     text = SKILL.read_text()
 
     assert "docs/superpowers/specs" not in text
+    assert "python3 -m pytest -q harness/test_deliver_resolver_mirrors.py harness/test_deliver_skill_contracts.py" in text
+    assert "python -m pytest" not in text
     assert "harness/test_deliver_resolver_mirrors.py" in text
     assert "harness/test_deliver_skill_contracts.py" in text
     assert ".github/workflows/deliver-guards.yml" in text
+
+
+def test_paired_files_touched_is_verbatim_path_list_for_grader() -> None:
+    paired = PAIRED_MODE.read_text()
+    prompt = (REPO_ROOT / "skills/deliver/references/grader-prompt.md").read_text()
+
+    assert "'{{ files_touched }}':   read_text(f\"{d}/files_touched\")" in paired
+    assert "'{{ files_touched }}':   safe(f\"{d}/files_touched\")" not in paired
+    assert "files_touched` is inserted verbatim" in prompt
+    assert "opaque path hint" in prompt
+
+
+def test_paired_incomplete_grader_verdict_requires_missing_requirements() -> None:
+    paired = PAIRED_MODE.read_text()
+    prompt = (REPO_ROOT / "skills/deliver/references/grader-prompt.md").read_text()
+
+    assert (
+        "and (if (.complete | not) then (.missing_requirements | length) > 0 else true end)"
+        in paired
+    )
+    assert "complete:false implies" in paired
+    assert 'MUST contain at least one entry when `complete: false`' in prompt

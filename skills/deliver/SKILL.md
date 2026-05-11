@@ -64,7 +64,7 @@ Each mode file is self-contained — do not flip back to this SKILL.md once you'
 Run the focused deliver guards:
 
 ```bash
-python -m pytest -q harness/test_deliver_resolver_mirrors.py harness/test_deliver_skill_contracts.py
+python3 -m pytest -q harness/test_deliver_resolver_mirrors.py harness/test_deliver_skill_contracts.py
 ```
 
 CI runs the same guard set via `.github/workflows/deliver-guards.yml`.
