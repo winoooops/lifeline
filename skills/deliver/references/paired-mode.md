@@ -230,7 +230,7 @@ FILES_TOUCHED=""   # leave empty by default; if your objective is out-of-repo
 # Set explicitly: UNTRACKED_INCLUDE=(src/foo.py "/tmp/output report.html")
 # Default only when unset; once set, keep the original array intact so
 # paths containing spaces remain single elements.
-[[ -v UNTRACKED_INCLUDE ]] || UNTRACKED_INCLUDE=()
+[ -z "${UNTRACKED_INCLUDE+x}" ] && UNTRACKED_INCLUDE=()
 
 # Per-file size cap (16 KB) and total cap (256 KB raw) leave room for
 # HTML escaping expansion before the content reaches the grader prompt.

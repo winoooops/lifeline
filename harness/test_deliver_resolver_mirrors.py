@@ -111,12 +111,11 @@ def _value_from_output(stdout: str, key: str) -> str | None:
 
 def _resolved_skill_dir(proc: subprocess.CompletedProcess[str]) -> str:
     skill_dir = _value_from_output(proc.stdout, "SKILL_DIR")
-    if skill_dir is not None:
-        return skill_dir
-
-    lines = [line for line in proc.stdout.splitlines() if line.strip()]
-    assert lines, f"resolver produced no stdout; stderr was:\n{proc.stderr}"
-    return lines[-1]
+    assert skill_dir is not None, (
+        f"resolver did not emit SKILL_DIR=... on stdout:\n"
+        f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
+    return skill_dir
 
 
 @pytest.mark.parametrize("name, resolver", RESOLVERS.items())

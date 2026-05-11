@@ -11,6 +11,8 @@ PURE_MODE = REPO_ROOT / "skills/deliver/references/pure-mode.md"
 PAIRED_MODE = REPO_ROOT / "skills/deliver/references/paired-mode.md"
 DELIVER_GUARDS_WORKFLOW = REPO_ROOT / ".github/workflows/deliver-guards.yml"
 RESOLVER_SCRIPT = REPO_ROOT / "skills/deliver/scripts/resolve-skill-dir.sh"
+NOTICE = REPO_ROOT / "NOTICE"
+APACHE_LICENSE = REPO_ROOT / "LICENSE-apache-2.0"
 
 
 def test_explicit_paired_cap_has_a_maximum_bound() -> None:
@@ -44,7 +46,8 @@ def test_paired_step_2c_guards_all_rehydrated_paths() -> None:
 def test_paired_untracked_evidence_has_file_and_total_caps() -> None:
     text = PAIRED_MODE.read_text()
 
-    assert "[[ -v UNTRACKED_INCLUDE ]] || UNTRACKED_INCLUDE=()" in text
+    assert '[ -z "${UNTRACKED_INCLUDE+x}" ] && UNTRACKED_INCLUDE=()' in text
+    assert "[[ -v UNTRACKED_INCLUDE ]]" not in text
     assert "UNTRACKED_INCLUDE=(${UNTRACKED_INCLUDE" not in text
     assert "_MAX_UNTRACKED_BYTES=16384" in text
     assert "_MAX_UNTRACKED_TOTAL_BYTES=262144" in text
@@ -58,6 +61,7 @@ def test_paired_git_diff_head_has_size_cap() -> None:
 
     assert "_MAX_GIT_DIFF_HEAD_BYTES=524288" in text
     assert "wc -c" in text
+    assert "tr -d '[:space:]'" in text
     assert "head -c \"$_MAX_GIT_DIFF_HEAD_BYTES\"" in text
     assert "--- diff truncated at ${_MAX_GIT_DIFF_HEAD_BYTES}B ---" in text
 
@@ -147,8 +151,26 @@ def test_mode_initialization_echoes_resolved_skill_dir_after_resolver() -> None:
         assert 'echo "SKILL_DIR=$SKILL_DIR"' in after_resolver
 
 
+def test_resolver_script_emits_skill_dir_assignment() -> None:
+    text = RESOLVER_SCRIPT.read_text()
+
+    assert "Prints SKILL_DIR=<resolved path> to stdout" in text
+    assert "printf 'SKILL_DIR=%s\\n'" in text
+    assert "printf '%s\\n' \"$LIFELINE_SKILL_DIR\"" not in text
+
+
 def test_resolver_script_validity_check_matches_inline_empty_path_behavior() -> None:
     text = RESOLVER_SCRIPT.read_text()
 
     assert '${1:-}' not in text
     assert '[ -f "$1/schemas/grader-output.json" ]' in text
+
+
+def test_apache_license_text_is_distributed_with_notice() -> None:
+    notice = NOTICE.read_text()
+    license_text = APACHE_LICENSE.read_text()
+
+    assert "LICENSE-apache-2.0" in notice
+    assert "Apache License" in license_text
+    assert "Version 2.0, January 2004" in license_text
+    assert "END OF TERMS AND CONDITIONS" in license_text

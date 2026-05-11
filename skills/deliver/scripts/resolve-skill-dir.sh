@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Resolve the deliver skill directory.
 #
-# Prints the resolved path to stdout on success. Exits 0 on success, 1 on failure.
+# Prints SKILL_DIR=<resolved path> to stdout on success. Exits 0 on success,
+# 1 on failure.
 #
 # Resolution order (first match wins):
 #   1. $LIFELINE_SKILL_DIR — explicit override (lifeline-dev workflow, tests).
@@ -26,7 +27,8 @@
 # working-tree copy.
 #
 # Usage:
-#   SKILL_DIR=$(./scripts/resolve-skill-dir.sh) || { echo "skill not found" >&2; exit 1; }
+#   _resolver_output=$(./scripts/resolve-skill-dir.sh) || { echo "skill not found" >&2; exit 1; }
+#   SKILL_DIR=${_resolver_output#SKILL_DIR=}
 
 set -euo pipefail
 
@@ -51,7 +53,7 @@ is_valid() {
 
 # 1. Env override.
 if [ -n "${LIFELINE_SKILL_DIR:-}" ] && is_valid "$LIFELINE_SKILL_DIR"; then
-  printf '%s\n' "$LIFELINE_SKILL_DIR"
+  printf 'SKILL_DIR=%s\n' "$LIFELINE_SKILL_DIR"
   exit 0
 fi
 
@@ -70,7 +72,7 @@ if [ -d "$CACHE_ROOT" ]; then
     [ -d "$CACHE_ROOT/$_entry" ] && LATEST="$_entry" && break
   done < <(ls -1t "$CACHE_ROOT" 2>/dev/null)
   if [ -n "$LATEST" ] && is_valid "$CACHE_ROOT/$LATEST/skills/deliver"; then
-    printf '%s\n' "$CACHE_ROOT/$LATEST/skills/deliver"
+    printf 'SKILL_DIR=%s\n' "$CACHE_ROOT/$LATEST/skills/deliver"
     exit 0
   fi
 fi
