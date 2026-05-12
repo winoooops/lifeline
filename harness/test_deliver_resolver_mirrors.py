@@ -246,6 +246,31 @@ def test_deliver_resolver_mirrors_pad_numeric_fourth_version_component(
 
 
 @pytest.mark.parametrize("name, resolver", RESOLVERS.items())
+def test_deliver_resolver_mirrors_ignore_non_numeric_fourth_version_component(
+    tmp_path: Path,
+    name: str,
+    resolver: tuple[str, Path],
+) -> None:
+    """Nonnumeric 4th fields must not sort after numeric 4th fields."""
+    env = _base_env(tmp_path)
+    cache_root = Path(env["HOME"]) / ".claude/plugins/cache/lifeline/lifeline"
+    prerelease_skill = _make_deliver_skill(cache_root / "1.2.3.rc1/skills/deliver")
+    stable_skill = _make_deliver_skill(cache_root / "1.2.3.10/skills/deliver")
+
+    os.utime(cache_root / "1.2.3.rc1", (1000, 1000))
+    os.utime(cache_root / "1.2.3.10", (1000, 1000))
+
+    proc = _run_resolver(*resolver, env=env)
+
+    assert proc.returncode == 0, (
+        f"{name} failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
+    assert _resolved_skill_dir(proc) == str(stable_skill)
+    assert _resolved_skill_dir(proc) != str(prerelease_skill)
+    assert "WARN: ignoring non-numeric fourth version component" in proc.stderr
+
+
+@pytest.mark.parametrize("name, resolver", RESOLVERS.items())
 def test_deliver_resolver_mirrors_do_not_fall_back_to_workspace(
     tmp_path: Path,
     name: str,

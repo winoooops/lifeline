@@ -48,7 +48,10 @@ version_key() {
   case "$_patch" in ""|*[!0-9]*) _patch=0 ;; esac
   case "${_rest:-}" in
     "") _rest= ;;
-    *[!0-9]*) ;;
+    *[!0-9]*)
+      echo "WARN: ignoring non-numeric fourth version component in cache entry: $1" >&2
+      _rest=
+      ;;
     *) _rest=$(printf '%010d' "$((10#$_rest))") ;;
   esac
   printf '%010d.%010d.%010d.%s\n' "$((10#$_major))" "$((10#$_minor))" "$((10#$_patch))" "${_rest:-}"

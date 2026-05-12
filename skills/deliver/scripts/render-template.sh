@@ -22,6 +22,7 @@ shift 3
 ITER_USED=
 ITER_BUDGET=
 ITER_REMAINING=
+ITER_REMAINING_SEEN=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --iter-used)
@@ -36,6 +37,7 @@ while [ "$#" -gt 0 ]; do
       ;;
     --iter-remaining)
       [ "$#" -ge 2 ] || { usage; exit 2; }
+      ITER_REMAINING_SEEN=1
       ITER_REMAINING=$2
       shift 2
       ;;
@@ -57,10 +59,13 @@ esac
 case "$ITER_BUDGET" in
   *[!0-9]*) echo "ERROR: --iter-budget must be a non-negative integer" >&2; exit 2 ;;
 esac
-case "$ITER_REMAINING" in
-  *[!0-9]*) echo "ERROR: --iter-remaining must be a non-negative integer" >&2; exit 2 ;;
-esac
-if [ -z "$ITER_REMAINING" ] && grep -qF '{{ iter_remaining }}' "$TEMPLATE"; then
+if [ "$ITER_REMAINING_SEEN" -eq 1 ]; then
+  [ -n "$ITER_REMAINING" ] || { echo "ERROR: --iter-remaining must be a non-negative integer" >&2; exit 2; }
+  case "$ITER_REMAINING" in
+    *[!0-9]*) echo "ERROR: --iter-remaining must be a non-negative integer" >&2; exit 2 ;;
+  esac
+fi
+if [ "$ITER_REMAINING_SEEN" -eq 0 ] && grep -qF '{{ iter_remaining }}' "$TEMPLATE"; then
   echo "WARN: template uses {{ iter_remaining }} but --iter-remaining was not provided" >&2
 fi
 
