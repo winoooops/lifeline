@@ -120,7 +120,7 @@ def test_paired_mode_materializes_objective_without_shell_state() -> None:
     assert "single-quoted literal" in text
     assert "escape every literal single quote" in text
     assert "use a here-doc" in text
-    assert text.count("OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'") == 1
+    assert text.count("OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'") == 2
     assert 'OBJECTIVE_RAW_FILE="$SCRATCH/objective.raw"' in text
     assert 'printf \'%s\' "$OBJECTIVE_RAW" > "$OBJECTIVE_RAW_FILE" ||' in text
     assert "ERROR: failed to write raw objective" in text
@@ -134,6 +134,18 @@ def test_paired_mode_materializes_objective_without_shell_state() -> None:
     assert "printf '%s' \"$OBJECTIVE\"" not in text
     assert "failed to create render dir" in text
     assert "failed to write objective file" not in text
+
+
+def test_objective_assignment_has_bash_syntax_preflight() -> None:
+    for path in (PURE_MODE, PAIRED_MODE):
+        text = path.read_text()
+
+        assert "validate the exact objective assignment" in text
+        assert "bash -n <<'LIFELINE_OBJECTIVE_ASSIGNMENT_CHECK'" in text
+        assert "LIFELINE_OBJECTIVE_ASSIGNMENT_CHECK" in text
+        assert "uses a heredoc only to feed" in text
+        assert "use a here-doc to materialize OBJECTIVE_RAW" in text
+        assert text.count("OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'") == 2
 
 
 def test_paired_render_input_writes_fail_loudly() -> None:
@@ -184,6 +196,13 @@ def test_budget_limit_render_calls_pass_iter_remaining() -> None:
         assert '--iter-used "$ITER"' in budget_block
         assert '--iter-budget "$CAP"' in budget_block
         assert '--iter-remaining "$((CAP - ITER))" || exit 1' in budget_block
+
+
+def test_budget_limit_prompt_describes_pure_scratch_lifecycle() -> None:
+    text = (REPO_ROOT / "skills/deliver/references/budget_limit.md").read_text()
+
+    assert "pure mode cleans up its scratch dir before emitting the budget-limited report" in text
+    assert "pure mode does not create a scratch dir" not in text
 
 
 def test_pure_mode_preflights_continuation_template() -> None:

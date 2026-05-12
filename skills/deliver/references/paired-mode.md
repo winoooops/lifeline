@@ -10,6 +10,14 @@ Paired mode delegates each iteration's "is the objective complete?" decision to 
 
 Run via the Bash tool. Resolution is **inline** here (not via the resolver script) because when the skill runs as an installed plugin in a target repo, `$REPO_ROOT/skills/deliver/scripts/resolve-skill-dir.sh` does not exist — the skill files live in the plugin cache, not in the user's repo. The resolver-script call has a chicken-and-egg problem; inlining the same lookup avoids it.
 
+Before running the Step 1 block, validate the exact objective assignment you are about to paste there. Replace the placeholder below with the same Bash single-quoted literal you will use in Step 1; if this syntax check fails, fix the single-quote escaping before running the full block. If the objective contains the literal delimiter line `LIFELINE_OBJECTIVE_ASSIGNMENT_CHECK`, choose a different delimiter for this check only.
+
+```bash
+bash -n <<'LIFELINE_OBJECTIVE_ASSIGNMENT_CHECK'
+OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'
+LIFELINE_OBJECTIVE_ASSIGNMENT_CHECK
+```
+
 ```bash
 # Validate everything that can fail BEFORE creating any disk artifact.
 # Earlier this block called mktemp first and then did the SKILL_DIR /
@@ -116,7 +124,9 @@ RENDER_TEMPLATE="$SKILL_DIR/scripts/render-template.sh"
 # single-quoted placeholder below with the exact objective as a Bash
 # single-quoted literal. Single-quoted Bash strings may span lines;
 # escape every literal single quote in the objective as: '\''. Do not
-# use a here-doc; delimiter collisions can truncate objectives.
+# use a here-doc to materialize OBJECTIVE_RAW; delimiter collisions can
+# truncate objectives. The preflight above uses a heredoc only to feed
+# this assignment line to bash -n before the full block runs.
 OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'
 if [ "$OBJECTIVE_RAW" = "__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__" ]; then
   echo "ERROR: replace the objective single-quoted placeholder before running paired mode Step 1." >&2
