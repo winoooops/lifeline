@@ -103,6 +103,9 @@ def test_paired_mode_preflights_required_codex_exec_flags() -> None:
     assert "for _flag in --sandbox --ephemeral --output-schema --output-last-message" in text
     assert "codex exec is missing required flag" in text
     assert "stdin prompt support (-- -)" in text
+    assert "codex --version" in text
+    assert "codex CLI must be >= 0.130.0" in text
+    assert "continuing." in text
     assert "*'if `-` is used'*" in text
 
 
@@ -112,7 +115,7 @@ def test_paired_mode_materializes_objective_without_shell_state() -> None:
     assert "single-quoted literal" in text
     assert "escape every literal single quote" in text
     assert "use a here-doc" in text
-    assert "OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'" in text
+    assert text.count("OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'") == 2
     assert "replace the objective single-quoted placeholder before running paired mode Step 2c" in text
     assert "printf '%s' \"$OBJECTIVE_RAW\" > \"$RENDER_DIR/objective\"" in text
     assert "Do not rely" in text

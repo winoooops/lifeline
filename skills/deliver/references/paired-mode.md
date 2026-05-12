@@ -139,6 +139,19 @@ command -v codex >/dev/null 2>&1 || {
   echo "ERROR: codex CLI is required for paired-mode grading. Install or upgrade codex and re-run." >&2
   exit 1
 }
+_codex_version=$(codex --version 2>/dev/null || true)
+_codex_version_numbers=$(printf '%s\n' "$_codex_version" | sed -n 's/.*\([0-9][0-9]*\)\.\([0-9][0-9]*\)\.\([0-9][0-9]*\).*/\1 \2 \3/p')
+_codex_version_key=""
+if [ -n "$_codex_version_numbers" ]; then
+  IFS=' ' read -r _codex_major _codex_minor _codex_patch <<< "$_codex_version_numbers"
+  _codex_version_key=$(printf '%010d.%010d.%010d' "$((10#$_codex_major))" "$((10#$_codex_minor))" "$((10#$_codex_patch))")
+  if [[ "$_codex_version_key" < "0000000000.0000000130.0000000000" ]]; then
+    echo "ERROR: codex CLI must be >= 0.130.0 for paired-mode stdin grading support; found ${_codex_version:-unknown}. Upgrade Codex CLI and re-run." >&2
+    exit 1
+  fi
+else
+  echo "WARN: could not parse codex CLI version from '${_codex_version:-unknown}'; falling back to codex exec help text for stdin support." >&2
+fi
 _codex_exec_help=$(codex exec --help 2>&1 || true)
 for _flag in --sandbox --ephemeral --output-schema --output-last-message; do
   case "$_codex_exec_help" in
@@ -152,8 +165,12 @@ done
 case "$_codex_exec_help" in
   *'if `-` is used'*|*"instructions are read from stdin"*) ;;
   *)
-    echo "ERROR: codex exec help does not advertise stdin prompt support (-- -). Upgrade Codex CLI and re-run." >&2
-    exit 1
+    if [ -n "$_codex_version_key" ]; then
+      echo "WARN: codex exec help text did not advertise stdin prompt support (-- -), but codex CLI ${_codex_version:-unknown} is >= 0.130.0; continuing." >&2
+    else
+      echo "ERROR: codex exec help does not advertise stdin prompt support (-- -), and codex CLI version could not be parsed. Upgrade Codex CLI and re-run." >&2
+      exit 1
+    fi
     ;;
 esac
 
