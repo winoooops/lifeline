@@ -102,6 +102,8 @@ def test_paired_mode_preflights_required_codex_exec_flags() -> None:
     assert "codex exec --help" in text
     assert "for _flag in --sandbox --ephemeral --output-schema --output-last-message" in text
     assert "codex exec is missing required flag" in text
+    assert "stdin prompt support (-- -)" in text
+    assert "*'if `-` is used'*" in text
 
 
 def test_paired_mode_materializes_objective_without_shell_state() -> None:
@@ -231,6 +233,13 @@ def test_grader_unusable_hard_error_prints_scratch_dir_to_stdout() -> None:
     assert 'echo "scratch_dir: $SCRATCH" >&2' not in text
 
 
+def test_grader_unusable_streak_writes_fail_loudly() -> None:
+    text = PAIRED_MODE.read_text()
+
+    assert text.count('> "$SCRATCH/grader-unusable-streak" ||') == 3
+    assert "ERROR: failed to write grader-unusable-streak" in text
+
+
 def test_success_reports_use_computed_iteration_count() -> None:
     pure = PURE_MODE.read_text()
     paired = PAIRED_MODE.read_text()
@@ -342,10 +351,13 @@ def test_apache_license_text_is_distributed_with_notice() -> None:
 
 def test_smoke_tests_section_points_to_existing_guards() -> None:
     text = SKILL.read_text()
+    workflow = DELIVER_GUARDS_WORKFLOW.read_text()
 
     assert "docs/superpowers/specs" not in text
     assert "python3 -m pytest -q harness/test_deliver_resolver_mirrors.py harness/test_deliver_skill_contracts.py" in text
     assert "python -m pytest" not in text
+    assert "python3 -m pytest -q" in workflow
+    assert "python -m pytest" not in workflow
     assert "harness/test_deliver_resolver_mirrors.py" in text
     assert "harness/test_deliver_skill_contracts.py" in text
     assert ".github/workflows/deliver-guards.yml" in text

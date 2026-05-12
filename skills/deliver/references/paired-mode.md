@@ -149,6 +149,13 @@ for _flag in --sandbox --ephemeral --output-schema --output-last-message; do
       ;;
   esac
 done
+case "$_codex_exec_help" in
+  *'if `-` is used'*|*"instructions are read from stdin"*) ;;
+  *)
+    echo "ERROR: codex exec help does not advertise stdin prompt support (-- -). Upgrade Codex CLI and re-run." >&2
+    exit 1
+    ;;
+esac
 
 # All validations passed — now safe to allocate the scratch directory.
 SCRATCH=$(mktemp -d -t lifeline-deliver-XXXXXX)
@@ -159,7 +166,7 @@ ITER=0   # explicit initial value, echoed below so the first iteration
          # alongside the other captures (Step 2d echoes the incremented
          # ITER for subsequent iterations).
 GRADER_UNUSABLE_STREAK=0
-printf '%s\n' "$GRADER_UNUSABLE_STREAK" > "$SCRATCH/grader-unusable-streak"
+printf '%s\n' "$GRADER_UNUSABLE_STREAK" > "$SCRATCH/grader-unusable-streak" || { echo "ERROR: failed to write grader-unusable-streak at $SCRATCH/grader-unusable-streak" >&2; exit 1; }
 
 echo "SCRATCH=$SCRATCH"
 echo "SKILL_DIR=$SKILL_DIR"
@@ -547,7 +554,7 @@ if [ "$CODEX_EXIT" -eq 0 ] && [ -s "$SCRATCH/grader-$ITER.json" ] \
   # being treated as usable grader output.
   COMPLETE=$(jq -r '.complete' "$SCRATCH/grader-$ITER.json")
   GRADER_UNUSABLE_STREAK=0
-  printf '%s\n' "$GRADER_UNUSABLE_STREAK" > "$SCRATCH/grader-unusable-streak"
+  printf '%s\n' "$GRADER_UNUSABLE_STREAK" > "$SCRATCH/grader-unusable-streak" || { echo "ERROR: failed to write grader-unusable-streak at $SCRATCH/grader-unusable-streak" >&2; exit 1; }
   echo "GRADER_UNUSABLE_STREAK=$GRADER_UNUSABLE_STREAK"
   if [ "$COMPLETE" = "true" ]; then
     VERDICT="complete"
@@ -566,7 +573,7 @@ if [ "$CODEX_EXIT" -eq 0 ] && [ -s "$SCRATCH/grader-$ITER.json" ] \
 else
   VERDICT_SOURCE="self-audit-fallback"
   GRADER_UNUSABLE_STREAK=$((GRADER_UNUSABLE_STREAK + 1))
-  printf '%s\n' "$GRADER_UNUSABLE_STREAK" > "$SCRATCH/grader-unusable-streak"
+  printf '%s\n' "$GRADER_UNUSABLE_STREAK" > "$SCRATCH/grader-unusable-streak" || { echo "ERROR: failed to write grader-unusable-streak at $SCRATCH/grader-unusable-streak" >&2; exit 1; }
   echo "GRADER_UNUSABLE_STREAK=$GRADER_UNUSABLE_STREAK"
   # Stdout contract: every parsed value goes to stdout (the agent reads
   # stdout for downstream reasoning). Stderr is for human-only warning
