@@ -1,0 +1,288 @@
+"""Regression tests for the /lifeline:deliver skill-dir resolver mirrors."""
+
+from __future__ import annotations
+
+import os
+import subprocess
+from pathlib import Path
+
+import pytest
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+PURE_MODE = REPO_ROOT / "skills/deliver/references/pure-mode.md"
+PAIRED_MODE = REPO_ROOT / "skills/deliver/references/paired-mode.md"
+RESOLVER_SCRIPT = REPO_ROOT / "skills/deliver/scripts/resolve-skill-dir.sh"
+
+
+def _resolver_bash_block(path: Path) -> str:
+    text = path.read_text()
+    marker = "# BEGIN RESOLVER"
+    marker_at = text.find(marker)
+    assert marker_at != -1, f"{path} is missing the resolver begin marker"
+    start = text.find("\n", marker_at)
+    assert start != -1, f"{path} has a resolver begin marker without a body"
+    end = text.find("\n# END RESOLVER", start)
+    assert end != -1, f"{path} is missing the resolver end marker"
+    return text[start + 1:end].rstrip() + '\n\necho "SKILL_DIR=$SKILL_DIR"\n'
+
+
+RESOLVERS = {
+    "pure-mode.md inline block": ("inline", PURE_MODE),
+    "paired-mode.md inline block": ("inline", PAIRED_MODE),
+    "resolve-skill-dir.sh": ("script", RESOLVER_SCRIPT),
+}
+
+
+def test_inline_resolver_extraction_excludes_surrounding_initialization() -> None:
+    pure = _resolver_bash_block(PURE_MODE)
+    paired = _resolver_bash_block(PAIRED_MODE)
+
+    assert "ITER=0" not in pure
+    assert "SCHEMA_PATH=" not in pure
+    assert "mktemp" not in pure
+
+    assert "SCHEMA_PATH=" not in paired
+    assert "GRADER_TEMPLATE=" not in paired
+    assert "command -v jq" not in paired
+    assert "command -v python3" not in paired
+    assert "mktemp" not in paired
+
+
+def _make_deliver_skill(path: Path) -> Path:
+    (path / "schemas").mkdir(parents=True)
+    (path / "schemas/grader-output.json").write_text("{}\n")
+    (path / "references").mkdir(parents=True)
+    (path / "references/grader-prompt.md").write_text("grader\n")
+    return path
+
+
+def _base_env(tmp_path: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    env["HOME"] = str(tmp_path / "home")
+    env["TMPDIR"] = str(tmp_path)
+    env.pop("LIFELINE_SKILL_DIR", None)
+    return env
+
+
+def _run_resolver(
+    kind: str,
+    source: Path,
+    env: dict[str, str],
+) -> subprocess.CompletedProcess[str]:
+    if kind == "inline":
+        cmd = ["bash", "-c", _resolver_bash_block(source)]
+    else:
+        cmd = [str(source)]
+
+    proc = subprocess.run(
+        cmd,
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=15,
+    )
+
+    return proc
+
+
+def _value_from_output(stdout: str, key: str) -> str | None:
+    prefix = f"{key}="
+    for line in stdout.splitlines():
+        if line.startswith(prefix):
+            return line[len(prefix) :]
+    return None
+
+
+def _resolved_skill_dir(proc: subprocess.CompletedProcess[str]) -> str:
+    skill_dir = _value_from_output(proc.stdout, "SKILL_DIR")
+    assert skill_dir is not None, (
+        f"resolver did not emit SKILL_DIR=... on stdout:\n"
+        f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
+    return skill_dir
+
+
+@pytest.mark.parametrize("name, resolver", RESOLVERS.items())
+def test_deliver_resolver_mirrors_accept_env_override(
+    tmp_path: Path,
+    name: str,
+    resolver: tuple[str, Path],
+) -> None:
+    """All three resolver copies must honor LIFELINE_SKILL_DIR first."""
+    skill_dir = _make_deliver_skill(tmp_path / "local-deliver")
+    env = _base_env(tmp_path)
+    env["LIFELINE_SKILL_DIR"] = str(skill_dir)
+
+    proc = _run_resolver(*resolver, env=env)
+
+    assert proc.returncode == 0, (
+        f"{name} failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
+    assert _resolved_skill_dir(proc) == str(skill_dir)
+
+
+@pytest.mark.parametrize("name, resolver", RESOLVERS.items())
+def test_deliver_resolver_mirrors_pick_newest_cache_directory_and_ignore_files(
+    tmp_path: Path,
+    name: str,
+    resolver: tuple[str, Path],
+) -> None:
+    """Mirror guard for cache ordering and the macOS .DS_Store failure mode."""
+    env = _base_env(tmp_path)
+    cache_root = Path(env["HOME"]) / ".claude/plugins/cache/lifeline/lifeline"
+    _make_deliver_skill(cache_root / "old/skills/deliver")
+    new_skill = _make_deliver_skill(cache_root / "new/skills/deliver")
+    ds_store = cache_root / ".DS_Store"
+    ds_store.write_text("finder metadata\n")
+
+    os.utime(cache_root / "old", (1000, 1000))
+    os.utime(cache_root / "new", (2000, 2000))
+    os.utime(ds_store, (3000, 3000))
+
+    proc = _run_resolver(*resolver, env=env)
+
+    assert proc.returncode == 0, (
+        f"{name} failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
+    assert _resolved_skill_dir(proc) == str(new_skill)
+
+
+@pytest.mark.parametrize("name, resolver", RESOLVERS.items())
+def test_deliver_resolver_mirrors_skip_invalid_newest_cache_directory(
+    tmp_path: Path,
+    name: str,
+    resolver: tuple[str, Path],
+) -> None:
+    """A partial newest cache install must not block an older valid install."""
+    env = _base_env(tmp_path)
+    cache_root = Path(env["HOME"]) / ".claude/plugins/cache/lifeline/lifeline"
+    valid_skill = _make_deliver_skill(cache_root / "0.0.1/skills/deliver")
+    invalid_dir = cache_root / "0.0.2"
+    (invalid_dir / "skills/deliver").mkdir(parents=True)
+
+    os.utime(cache_root / "0.0.1", (1000, 1000))
+    os.utime(invalid_dir, (2000, 2000))
+
+    proc = _run_resolver(*resolver, env=env)
+
+    assert proc.returncode == 0, (
+        f"{name} failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
+    assert _resolved_skill_dir(proc) == str(valid_skill)
+    assert "WARN: skipping cache entry missing sentinel" in proc.stderr
+
+
+@pytest.mark.parametrize("name, resolver", RESOLVERS.items())
+def test_deliver_resolver_mirrors_warn_on_invalid_env_override_then_use_cache(
+    tmp_path: Path,
+    name: str,
+    resolver: tuple[str, Path],
+) -> None:
+    """An invalid LIFELINE_SKILL_DIR should be visible and fall back."""
+    env = _base_env(tmp_path)
+    invalid_override = tmp_path / "invalid-deliver"
+    invalid_override.mkdir()
+    env["LIFELINE_SKILL_DIR"] = str(invalid_override)
+    cache_root = Path(env["HOME"]) / ".claude/plugins/cache/lifeline/lifeline"
+    valid_skill = _make_deliver_skill(cache_root / "0.0.1/skills/deliver")
+
+    proc = _run_resolver(*resolver, env=env)
+
+    assert proc.returncode == 0, (
+        f"{name} failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
+    assert _resolved_skill_dir(proc) == str(valid_skill)
+    assert "WARN: LIFELINE_SKILL_DIR set but sentinel missing" in proc.stderr
+
+
+@pytest.mark.parametrize("name, resolver", RESOLVERS.items())
+def test_deliver_resolver_mirrors_break_equal_mtime_ties_by_name(
+    tmp_path: Path,
+    name: str,
+    resolver: tuple[str, Path],
+) -> None:
+    """Equal-mtime cache dirs resolve by numeric version-name tie-break."""
+    env = _base_env(tmp_path)
+    cache_root = Path(env["HOME"]) / ".claude/plugins/cache/lifeline/lifeline"
+    old_skill = _make_deliver_skill(cache_root / "0.0.9/skills/deliver")
+    new_skill = _make_deliver_skill(cache_root / "0.0.10/skills/deliver")
+
+    os.utime(cache_root / "0.0.9", (1000, 1000))
+    os.utime(cache_root / "0.0.10", (1000, 1000))
+
+    proc = _run_resolver(*resolver, env=env)
+
+    assert proc.returncode == 0, (
+        f"{name} failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
+    assert _resolved_skill_dir(proc) == str(new_skill)
+    assert _resolved_skill_dir(proc) != str(old_skill)
+
+
+@pytest.mark.parametrize("name, resolver", RESOLVERS.items())
+def test_deliver_resolver_mirrors_pad_numeric_fourth_version_component(
+    tmp_path: Path,
+    name: str,
+    resolver: tuple[str, Path],
+) -> None:
+    """Equal-mtime 4-part cache dirs compare numeric final components."""
+    env = _base_env(tmp_path)
+    cache_root = Path(env["HOME"]) / ".claude/plugins/cache/lifeline/lifeline"
+    old_skill = _make_deliver_skill(cache_root / "1.2.3.9/skills/deliver")
+    new_skill = _make_deliver_skill(cache_root / "1.2.3.10/skills/deliver")
+
+    os.utime(cache_root / "1.2.3.9", (1000, 1000))
+    os.utime(cache_root / "1.2.3.10", (1000, 1000))
+
+    proc = _run_resolver(*resolver, env=env)
+
+    assert proc.returncode == 0, (
+        f"{name} failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
+    assert _resolved_skill_dir(proc) == str(new_skill)
+    assert _resolved_skill_dir(proc) != str(old_skill)
+
+
+@pytest.mark.parametrize("name, resolver", RESOLVERS.items())
+def test_deliver_resolver_mirrors_ignore_non_numeric_fourth_version_component(
+    tmp_path: Path,
+    name: str,
+    resolver: tuple[str, Path],
+) -> None:
+    """Nonnumeric 4th fields must not sort after numeric 4th fields."""
+    env = _base_env(tmp_path)
+    cache_root = Path(env["HOME"]) / ".claude/plugins/cache/lifeline/lifeline"
+    prerelease_skill = _make_deliver_skill(cache_root / "1.2.3.rc1/skills/deliver")
+    stable_skill = _make_deliver_skill(cache_root / "1.2.3.10/skills/deliver")
+
+    os.utime(cache_root / "1.2.3.rc1", (1000, 1000))
+    os.utime(cache_root / "1.2.3.10", (1000, 1000))
+
+    proc = _run_resolver(*resolver, env=env)
+
+    assert proc.returncode == 0, (
+        f"{name} failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
+    assert _resolved_skill_dir(proc) == str(stable_skill)
+    assert _resolved_skill_dir(proc) != str(prerelease_skill)
+    assert "WARN: ignoring non-numeric fourth version component" in proc.stderr
+
+
+@pytest.mark.parametrize("name, resolver", RESOLVERS.items())
+def test_deliver_resolver_mirrors_do_not_fall_back_to_workspace(
+    tmp_path: Path,
+    name: str,
+    resolver: tuple[str, Path],
+) -> None:
+    """Workspace lookup was removed for security; all mirrors must keep it out."""
+    env = _base_env(tmp_path)
+
+    proc = _run_resolver(*resolver, env=env)
+
+    assert proc.returncode != 0, (
+        f"{name} unexpectedly resolved from workspace:\n{proc.stdout}"
+    )
+    assert "could not resolve" in proc.stderr.lower()
+    assert "schemas/grader-output.json" in proc.stderr

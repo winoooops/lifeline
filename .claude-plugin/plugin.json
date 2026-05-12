@@ -1,6 +1,6 @@
 {
   "name": "lifeline",
   "description": "Agent workflow for autonomous harness engineering on Claude Code — autonomous dev loop, paired Codex review, PR opener, PR finisher, codex-paired spec planner",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "author": { "name": "winoooops" }
 }

@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["complete", "missing_requirements", "evidence_checked"],
+  "properties": {
+    "complete": {
+      "type": "boolean",
+      "description": "True iff every objective requirement is covered by inspected evidence."
+    },
+    "missing_requirements": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "One entry per requirement that is missing, incomplete, or weakly verified. MUST be empty (length 0) when complete=true; the consumer enforces this cross-field invariant via jq because OpenAI structured-outputs schema dialect does not support if/then/else."
+    },
+    "evidence_checked": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "One entry per piece of real evidence inspected (file:lines, command output, test result, PR state). MUST contain at least one entry when complete=true; the consumer enforces this conditional invariant via jq because OpenAI structured-outputs schema dialect does not support if/then/else."
+    }
+  }
+}

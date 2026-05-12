@@ -1,0 +1,29 @@
+name: Deliver Skill Guards
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: Resolver and contract guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test runner
+        run: python3 -m pip install --upgrade pip pytest
+
+      - name: Run deliver guard tests
+        run: |
+          python3 -m pytest -q \
+            harness/test_deliver_resolver_mirrors.py \
+            harness/test_deliver_skill_contracts.py

@@ -6,16 +6,17 @@
 
 > 需求 → 头脑风暴产品规格 → 分阶段功能列表 → coder + 跨厂商 reviewer 循环 → 云端评审修复循环 → 合并 PR
 
-六个 Skills 端到端覆盖整个工作流：自主代理循环、本地 + 云端代码评审、PR 创建与合并、以及与 Codex 配对的设计规格撰写。
+七个 Skills 端到端覆盖整个流水线（设计 → 构建 → 评审 → PR），外加一个独立的目标驱动循环（改编自 OpenAI Codex 的 `/goal`）。
 
 ## Skills
 
-按一个功能从设计到合并的全生命周期顺序排列 —— 设计 → 自主构建 → 本地评审 → 创建 PR → 修复 PR 评审结果 → 合并。
+按一个功能从设计到合并的全生命周期顺序排列 —— 设计 → 自主构建 → 本地评审 → 创建 PR → 修复 PR 评审结果 → 合并。`/lifeline:deliver` 是例外：独立的目标驱动 Skill，不属于 PR 流水线。
 
 | Skill | 功能 |
 | --- | --- |
 | `/lifeline:planner` | 自包含的设计规格撰写器：引导你完成头脑风暴方法论，将规格写入 `docs/superpowers/specs/`，然后自动在结果上运行 Codex 评审并应用你选择的修改。v1 仅生成规格 —— 实施计划请单独运行 `/superpowers:writing-plans`。 |
 | `/lifeline:loop` | 启动自主开发 Harness —— 收集需求、头脑风暴产品规格、生成 `app_spec.md`、启动代理循环。语言无关、项目无关；自动读取项目根目录的 `CLAUDE.md` / `AGENTS.md` 来获取项目特定的构建/测试/lint 命令。 |
+| `/lifeline:deliver` | 目标驱动的会话内循环。两种模式：`/lifeline:deliver <objective>`（纯模式 —— Claude 在每次迭代中根据改编自 Codex `/goal` continuation 提示词自我审计）和 `/lifeline:deliver pair [N] <objective>`（配对模式 —— 完成判定委托给 `codex exec` 作为独立评判员，对其屏蔽 Claude 对话历史）。独立 Skill —— 不属于 PR 流水线。改编自 openai/codex `/goal` 模板（Apache-2.0；见 `NOTICE`）。 |
 | `/lifeline:review` | 在已暂存的 diff 上运行本地 Codex 代码评审 (`codex exec review --base main`)，结果保存到 `.codex-reviews/latest.md`。 |
 | `/lifeline:request-pr` | 从当前分支打开 PR，自动生成标题与正文（Summary 来自 commit list，Test plan 占位）。与 `/lifeline:approve-pr` 配对使用。 |
 | `/lifeline:upsource-review` | 自驱动循环 —— 从 GitHub 拉取 PR 评审结果（Claude Code Review + chatgpt-codex-connector），按周期原子化批量修复，在已暂存的 diff 上运行 `codex verify`，提交、推送、回复并解决 connector 评审线程，然后轮询下一轮评审。 |
@@ -59,7 +60,7 @@ Lifeline 以 Claude Code 插件市场的形式发布。在任意 Claude Code 会
 
 `/plugin install` 会把整个仓库同步到 `~/.claude/plugins/cache/lifeline/lifeline/<version>/`，包含：
 
-- `skills/` 下的 6 个 Skills（执行 `/reload-plugins` 后会被自动补全为 `/lifeline:<skill>`）。
+- `skills/` 下的 7 个 Skills（执行 `/reload-plugins` 后会被自动补全为 `/lifeline:<skill>`）。
 - `harness/` Python orchestrator —— `/lifeline:loop` 调用此目录。在启动循环前确保 `python3` 与 `harness/requirements.txt` 中的依赖在 `$PATH` 下可用。一次性安装依赖：`pip3 install -r ~/.claude/plugins/cache/lifeline/lifeline/<version>/harness/requirements.txt`。
 - Claude Code 用以注册 Skills 的 `.claude-plugin/marketplace.json` 与 `plugin.json` 清单文件。
 
@@ -74,11 +75,12 @@ while IFS='|' read -r slug desc; do
 ---
 description: ${desc}
 ---
-Use the Skill tool to invoke \`lifeline:${slug}\`.
+Use the Skill tool to invoke \`lifeline:${slug}\` with these arguments: \$ARGUMENTS
 EOF
 done <<'SKILLS'
 planner|头脑风暴设计规格并自动运行 Codex 评审
 loop|启动自主开发 Harness
+deliver|目标驱动的会话内循环（纯模式或与 Codex 配对）
 review|在已暂存的 diff 上运行本地 Codex 代码评审
 request-pr|从当前分支打开 PR，自动生成正文
 upsource-review|自驱动循环修复 PR 评审结果（Claude + Codex）
@@ -149,6 +151,7 @@ Lifeline 在原版基础上扩展：
 - 通过 `gh` 实现 PR 创建与合并（`/lifeline:request-pr`、`/lifeline:approve-pr`）。
 - 自驱动的 `upsource-review` 修复循环，同时轮询 Claude Code Review 和 `chatgpt-codex-connector`。
 - LLM 兜底的 bash 命令策略评审器。
+- **`/lifeline:deliver`** —— 目标驱动的会话内循环，改编自 OpenAI Codex 的 [`/goal` 命令](https://github.com/openai/codex/tree/main/codex-rs/core/templates/goals)（Apache-2.0）。`skills/deliver/references/` 下的 `continuation.md` 与 `budget_limit.md` 是上游模板的衍生作品，完整归属信息见 `NOTICE`。配对模式将完成判定委托给 `codex exec` 作为独立评判员 —— 这种 Outcomes 风格的隔离能减少自审中的确认偏差。
 
 ## 许可
 
