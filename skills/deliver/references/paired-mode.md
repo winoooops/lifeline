@@ -77,7 +77,7 @@ else
         && [[ "$(version_key "$_e")" > "$(version_key "$_latest")" ]]; then
         _latest="$_e"
       fi
-    done < <(find "$_cache"/* -prune -type d -print0 2>/dev/null)
+    done < <(find "$_cache" -maxdepth 1 -mindepth 1 -type d -print0 2>/dev/null)
     if [ -n "$_latest" ] && [ -f "$_cache/$_latest/skills/deliver/schemas/grader-output.json" ]; then
       SKILL_DIR="$_cache/$_latest/skills/deliver"
     fi
@@ -176,7 +176,9 @@ esac
 
 # All validations passed — now safe to allocate the scratch directory.
 SCRATCH=$(mktemp -d -t lifeline-deliver-XXXXXX)
+OBJECTIVE_RAW_FILE="$SCRATCH/objective.raw"
 OBJECTIVE_HTML_FILE="$SCRATCH/objective.html"
+printf '%s' "$OBJECTIVE_RAW" > "$OBJECTIVE_RAW_FILE" || { echo "ERROR: failed to write raw objective at $OBJECTIVE_RAW_FILE" >&2; exit 1; }
 printf '%s' "$OBJECTIVE_HTML" > "$OBJECTIVE_HTML_FILE" || { echo "ERROR: failed to write objective HTML at $OBJECTIVE_HTML_FILE" >&2; exit 1; }
 ITER=0   # explicit initial value, echoed below so the first iteration
          # of the loop has a stdout-echoed value to rehydrate from
@@ -190,12 +192,13 @@ echo "SKILL_DIR=$SKILL_DIR"
 echo "SCHEMA_PATH=$SCHEMA_PATH"
 echo "GRADER_TEMPLATE=$GRADER_TEMPLATE"
 echo "RENDER_TEMPLATE=$RENDER_TEMPLATE"
+echo "OBJECTIVE_RAW_FILE=$OBJECTIVE_RAW_FILE"
 echo "OBJECTIVE_HTML_FILE=$OBJECTIVE_HTML_FILE"
 echo "ITER=$ITER"
 echo "GRADER_UNUSABLE_STREAK_INIT=$GRADER_UNUSABLE_STREAK"
 ```
 
-Capture all eight scalar values (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE`, `RENDER_TEMPLATE`, `OBJECTIVE_HTML_FILE`, `ITER`, `GRADER_UNUSABLE_STREAK_INIT`) from this call's stdout. Use the scalar values as literal paths/integers in every subsequent Bash call. Do not substitute `{{ objective }}` manually; every continuation and budget-limit prompt must be rendered through `RENDER_TEMPLATE`, which reads the code-generated `OBJECTIVE_HTML_FILE`.
+Capture all nine scalar values (`SCRATCH`, `SKILL_DIR`, `SCHEMA_PATH`, `GRADER_TEMPLATE`, `RENDER_TEMPLATE`, `OBJECTIVE_RAW_FILE`, `OBJECTIVE_HTML_FILE`, `ITER`, `GRADER_UNUSABLE_STREAK_INIT`) from this call's stdout. Use the scalar values as literal paths/integers in every subsequent Bash call. Do not substitute `{{ objective }}` manually; every continuation and budget-limit prompt must be rendered through `RENDER_TEMPLATE`, which reads the code-generated `OBJECTIVE_HTML_FILE`, and every grader prompt reads the code-generated `OBJECTIVE_RAW_FILE`.
 
 Use `GRADER_UNUSABLE_STREAK_INIT` only to seed iteration 0. After Step 2c has run once, the scratch-backed streak file and the latest Step 2c `GRADER_UNUSABLE_STREAK=...` echo become the source of truth.
 
@@ -398,21 +401,14 @@ FILES_TOUCHED="$_validated_files_touched"
 # ENV would fail python3's exec() before any rendering happened. The
 # stdin path below for codex exec is the same fix applied at the
 # next layer.
-# Paste the objective exactly as parsed in SKILL.md Step 0. Do not rely
-# on a `$OBJECTIVE` shell variable — Bash state does not persist between
-# tool calls. Replace the single-quoted placeholder below with the exact
-# objective as a Bash single-quoted literal; escape every literal single
-# quote as: '\''. Do not use a here-doc; delimiter collisions can
-# truncate objectives.
-OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'
-if [ "$OBJECTIVE_RAW" = "__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__" ]; then
-  echo "ERROR: replace the objective single-quoted placeholder before running paired mode Step 2c." >&2
+OBJECTIVE_RAW_FILE="$SCRATCH/objective.raw"
+if [ ! -f "$OBJECTIVE_RAW_FILE" ]; then
+  echo "ERROR: raw objective file not found at $OBJECTIVE_RAW_FILE. Rerun paired mode Step 1." >&2
   echo "scratch_dir: $SCRATCH" >&2
   exit 1
 fi
 RENDER_DIR="$SCRATCH/render-input-$ITER"
 mkdir -p "$RENDER_DIR" || { echo "ERROR: failed to create render dir at $RENDER_DIR" >&2; exit 1; }
-printf '%s' "$OBJECTIVE_RAW" > "$RENDER_DIR/objective" || { echo "ERROR: failed to write objective file at $RENDER_DIR/objective" >&2; exit 1; }
 printf '%s' "$GIT_DIFF_HEAD" > "$RENDER_DIR/git_diff_head" || { echo "ERROR: failed to write render input git_diff_head at $RENDER_DIR/git_diff_head" >&2; exit 1; }
 printf '%s' "$UNTRACKED" > "$RENDER_DIR/untracked" || { echo "ERROR: failed to write render input untracked at $RENDER_DIR/untracked" >&2; exit 1; }
 printf '%s' "$GIT_STATUS" > "$RENDER_DIR/git_status" || { echo "ERROR: failed to write render input git_status at $RENDER_DIR/git_status" >&2; exit 1; }
@@ -421,10 +417,11 @@ printf '%s' "$FILES_TOUCHED" > "$RENDER_DIR/files_touched" || { echo "ERROR: fai
 PROMPT_FILE="$SCRATCH/grader-$ITER.prompt"
 : > "$PROMPT_FILE"   # truncate so a stale file doesn't masquerade as success
 set +e
-GRADER_TEMPLATE="$GRADER_TEMPLATE" RENDER_DIR="$RENDER_DIR" \
+GRADER_TEMPLATE="$GRADER_TEMPLATE" RENDER_DIR="$RENDER_DIR" OBJECTIVE_RAW_FILE="$OBJECTIVE_RAW_FILE" \
   python3 - > "$PROMPT_FILE" 2>"$SCRATCH/grader-$ITER.render-stderr" <<'PY'
 import os, re, html
 d = os.environ['RENDER_DIR']
+objective_raw_file = os.environ['OBJECTIVE_RAW_FILE']
 # Force UTF-8 — system default encoding (locale-derived) raises
 # UnicodeDecodeError on non-ASCII bytes when LANG/LC_ALL isn't UTF-8
 # (minimal containers, some CI envs). All our evidence is text and
@@ -453,7 +450,7 @@ def read_text(p): return open(p, encoding='utf-8', errors='replace').read()
 def safe(p): return html.escape(read_text(p), quote=False)
 
 mapping = {
-    '{{ objective }}':       safe(f"{d}/objective"),
+    '{{ objective }}':       safe(objective_raw_file),
     '{{ git_diff_head }}':   safe(f"{d}/git_diff_head"),
     '{{ untracked_files }}': safe(f"{d}/untracked"),
     '{{ git_status }}':      safe(f"{d}/git_status"),

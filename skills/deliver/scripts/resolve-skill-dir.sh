@@ -89,7 +89,7 @@ if [ -d "$CACHE_ROOT" ]; then
       && [[ "$(version_key "$_entry")" > "$(version_key "$LATEST")" ]]; then
       LATEST="$_entry"
     fi
-  done < <(find "$CACHE_ROOT"/* -prune -type d -print0 2>/dev/null)
+  done < <(find "$CACHE_ROOT" -maxdepth 1 -mindepth 1 -type d -print0 2>/dev/null)
   if [ -n "$LATEST" ] && is_valid "$CACHE_ROOT/$LATEST/skills/deliver"; then
     printf 'SKILL_DIR=%s\n' "$CACHE_ROOT/$LATEST/skills/deliver"
     exit 0

@@ -78,7 +78,7 @@ else
         && [[ "$(version_key "$_e")" > "$(version_key "$_latest")" ]]; then
         _latest="$_e"
       fi
-    done < <(find "$_cache"/* -prune -type d -print0 2>/dev/null)
+    done < <(find "$_cache" -maxdepth 1 -mindepth 1 -type d -print0 2>/dev/null)
     if [ -n "$_latest" ] && [ -f "$_cache/$_latest/skills/deliver/schemas/grader-output.json" ]; then
       SKILL_DIR="$_cache/$_latest/skills/deliver"
     fi

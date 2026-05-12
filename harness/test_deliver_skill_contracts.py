@@ -115,18 +115,16 @@ def test_paired_mode_materializes_objective_without_shell_state() -> None:
     assert "single-quoted literal" in text
     assert "escape every literal single quote" in text
     assert "use a here-doc" in text
-    assert text.count("OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'") == 2
-    assert "replace the objective single-quoted placeholder before running paired mode Step 2c" in text
-    assert "printf '%s' \"$OBJECTIVE_RAW\" > \"$RENDER_DIR/objective\"" in text
-    assert "Do not rely" in text
-    assert "$OBJECTIVE` shell variable" in text
+    assert text.count("OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'") == 1
+    assert 'OBJECTIVE_RAW_FILE="$SCRATCH/objective.raw"' in text
+    assert 'printf \'%s\' "$OBJECTIVE_RAW" > "$OBJECTIVE_RAW_FILE" ||' in text
+    assert 'GRADER_TEMPLATE="$GRADER_TEMPLATE" RENDER_DIR="$RENDER_DIR" OBJECTIVE_RAW_FILE="$OBJECTIVE_RAW_FILE"' in text
+    assert "'{{ objective }}':       safe(objective_raw_file)" in text
+    assert "every grader prompt reads the code-generated `OBJECTIVE_RAW_FILE`" in text
     assert "LIFELINE_OBJECTIVE_RAW" not in text
     assert "printf '%s' \"$OBJECTIVE\"" not in text
     assert "failed to create render dir" in text
-    assert "failed to write objective file" in text
-    assert text.index(
-        'if [ "$OBJECTIVE_RAW" = "__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__" ]; then'
-    ) < text.index('RENDER_DIR="$SCRATCH/render-input-$ITER"')
+    assert "failed to write objective file" not in text
 
 
 def test_paired_render_input_writes_fail_loudly() -> None:
@@ -237,10 +235,10 @@ def test_grader_unusable_hard_error_prints_scratch_dir_to_stdout() -> None:
     assert 'echo "scratch_dir: $SCRATCH" >&2' not in hard_error
 
 
-def test_paired_step_2c_placeholder_guard_reports_scratch_dir() -> None:
+def test_paired_step_2c_raw_objective_guard_reports_scratch_dir() -> None:
     text = PAIRED_MODE.read_text()
 
-    assert "replace the objective single-quoted placeholder before running paired mode Step 2c" in text
+    assert "raw objective file not found" in text
     assert 'echo "scratch_dir: $SCRATCH" >&2' in text
 
 
@@ -328,7 +326,7 @@ def test_resolver_mirrors_use_null_delimited_cache_enumeration() -> None:
     for path in (PURE_MODE, PAIRED_MODE, RESOLVER_SCRIPT):
         text = path.read_text()
         assert "ls -1" not in text
-        assert "find " in text
+        assert " -maxdepth 1 -mindepth 1 -type d -print0" in text
         assert "-print0" in text
         assert "read -r -d ''" in text
 
