@@ -65,20 +65,20 @@ else
   if [ -d "$_cache" ]; then
     # Newest-installed wins by mtime, with a zero-padded version-key
     # tiebreaker for equal mtimes. Use Bash's portable -nt check instead
-    # of `sort -V` (GNU-only, missing on default macOS/BSD). Filter to
-    # directories only — on macOS Finder writes `.DS_Store` with a newer
-    # mtime than the version subdirs whenever the user browses the cache.
+    # of `sort -V` (GNU-only, missing on default macOS/BSD). Enumerate
+    # with null-delimited find output so directory names are not parsed
+    # through `ls`; `-type d` filters files such as `.DS_Store`.
     _latest=""
-    while IFS= read -r _e; do
-      [ -d "$_cache/$_e" ] || continue
-      if [ -z "$_latest" ] || [ "$_cache/$_e" -nt "$_cache/$_latest" ]; then
+    while IFS= read -r -d '' _entry_path; do
+      _e=${_entry_path##*/}
+      if [ -z "$_latest" ] || [ "$_entry_path" -nt "$_cache/$_latest" ]; then
         _latest="$_e"
       elif [ ! "$_cache/$_latest" -nt "$_cache/$_e" ] \
-        && [ ! "$_cache/$_e" -nt "$_cache/$_latest" ] \
+        && [ ! "$_entry_path" -nt "$_cache/$_latest" ] \
         && [[ "$(version_key "$_e")" > "$(version_key "$_latest")" ]]; then
         _latest="$_e"
       fi
-    done < <(ls -1 "$_cache" 2>/dev/null)
+    done < <(find "$_cache"/* -prune -type d -print0 2>/dev/null)
     if [ -n "$_latest" ] && [ -f "$_cache/$_latest/skills/deliver/schemas/grader-output.json" ]; then
       SKILL_DIR="$_cache/$_latest/skills/deliver"
     fi

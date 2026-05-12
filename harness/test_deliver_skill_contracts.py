@@ -230,10 +230,18 @@ def test_paired_mode_uses_timeout_command_array() -> None:
 
 def test_grader_unusable_hard_error_prints_scratch_dir_to_stdout() -> None:
     text = PAIRED_MODE.read_text()
+    hard_error = text[text.index('echo "VERDICT=hard_error'): text.index('echo "FALLBACK:')]
 
-    assert 'echo "VERDICT=hard_error (grader_unusable_streak=$GRADER_UNUSABLE_STREAK)"' in text
-    assert 'echo "scratch_dir: $SCRATCH"' in text
-    assert 'echo "scratch_dir: $SCRATCH" >&2' not in text
+    assert 'echo "VERDICT=hard_error (grader_unusable_streak=$GRADER_UNUSABLE_STREAK)"' in hard_error
+    assert 'echo "scratch_dir: $SCRATCH"' in hard_error
+    assert 'echo "scratch_dir: $SCRATCH" >&2' not in hard_error
+
+
+def test_paired_step_2c_placeholder_guard_reports_scratch_dir() -> None:
+    text = PAIRED_MODE.read_text()
+
+    assert "replace the objective single-quoted placeholder before running paired mode Step 2c" in text
+    assert 'echo "scratch_dir: $SCRATCH" >&2' in text
 
 
 def test_grader_unusable_streak_writes_fail_loudly() -> None:
@@ -314,6 +322,15 @@ def test_resolver_mirrors_have_explicit_boundary_sentinels() -> None:
     assert "# END RESOLVER" in PURE_MODE.read_text()
     assert "# END RESOLVER" in PAIRED_MODE.read_text()
     assert "# END RESOLVER" in RESOLVER_SCRIPT.read_text()
+
+
+def test_resolver_mirrors_use_null_delimited_cache_enumeration() -> None:
+    for path in (PURE_MODE, PAIRED_MODE, RESOLVER_SCRIPT):
+        text = path.read_text()
+        assert "ls -1" not in text
+        assert "find " in text
+        assert "-print0" in text
+        assert "read -r -d ''" in text
 
 
 def test_mode_initialization_echoes_resolved_skill_dir_after_resolver() -> None:
@@ -398,11 +415,11 @@ def test_render_template_script_inserts_objective_last(tmp_path: Path) -> None:
             str(objective_html),
             str(output),
             "--iter-used",
-            "2",
+            "2&",
             "--iter-budget",
-            "5",
+            "5&",
             "--iter-remaining",
-            "3",
+            "3&",
         ],
         text=True,
         capture_output=True,
@@ -415,7 +432,7 @@ def test_render_template_script_inserts_objective_last(tmp_path: Path) -> None:
         "literal {{ iter_used }} and {{ objective }} &lt;/untrusted_objective&gt;"
         in rendered
     )
-    assert "used=2 budget=5 remaining=3" in rendered
+    assert "used=2& budget=5& remaining=3&" in rendered
 
 
 def test_paired_incomplete_grader_verdict_requires_missing_requirements() -> None:

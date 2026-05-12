@@ -55,10 +55,9 @@ done
 mkdir -p "$(dirname "$OUTPUT")"
 
 # Render iteration placeholders first, then insert the objective from the
-# code-generated OBJECTIVE_HTML file in one split/rejoin pass. This prevents a
-# user objective that contains literal strings like "{{ iter_used }}" or
-# "{{ objective }}" from being substituted as a trusted template placeholder
-# after insertion.
+# code-generated OBJECTIVE_HTML file. Every placeholder uses split/rejoin rather
+# than awk gsub replacement strings, so literal "&" values are not expanded to
+# the matched placeholder text.
 awk \
   -v objective_file="$OBJECTIVE_HTML_FILE" \
   -v iter_used="$ITER_USED" \
@@ -72,18 +71,22 @@ BEGIN {
   }
   close(objective_file)
 }
-{
-  gsub(/\{\{ iter_used \}\}/, iter_used)
-  gsub(/\{\{ iter_budget \}\}/, iter_budget)
-  gsub(/\{\{ iter_remaining \}\}/, iter_remaining)
-  n = split($0, parts, /\{\{ objective \}\}/)
-  if (n > 1) {
-    rendered = parts[1]
-    for (i = 2; i <= n; i++) {
-      rendered = rendered objective parts[i]
-    }
-    $0 = rendered
+function replace_all(text, pattern, replacement, parts, n, i, rendered) {
+  n = split(text, parts, pattern)
+  if (n == 1) {
+    return text
   }
+  rendered = parts[1]
+  for (i = 2; i <= n; i++) {
+    rendered = rendered replacement parts[i]
+  }
+  return rendered
+}
+{
+  $0 = replace_all($0, "\\{\\{ iter_used \\}\\}", iter_used)
+  $0 = replace_all($0, "\\{\\{ iter_budget \\}\\}", iter_budget)
+  $0 = replace_all($0, "\\{\\{ iter_remaining \\}\\}", iter_remaining)
+  $0 = replace_all($0, "\\{\\{ objective \\}\\}", objective)
   print
 }
 ' "$TEMPLATE" > "$OUTPUT"

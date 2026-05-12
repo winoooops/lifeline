@@ -76,20 +76,20 @@ CACHE_ROOT="${HOME}/.claude/plugins/cache/lifeline/lifeline"
 if [ -d "$CACHE_ROOT" ]; then
   # Newest-installed wins by mtime, with a zero-padded version-key
   # tiebreaker for equal mtimes. Use Bash's portable -nt check instead
-  # of `sort -V` (GNU-only, missing on default macOS/BSD). Filter to
-  # directories only — on macOS Finder writes `.DS_Store` with a newer
-  # mtime than the version subdirs whenever the user browses the cache.
+  # of `sort -V` (GNU-only, missing on default macOS/BSD). Enumerate
+  # with null-delimited find output so directory names are not parsed
+  # through `ls`; `-type d` filters files such as `.DS_Store`.
   LATEST=""
-  while IFS= read -r _entry; do
-    [ -d "$CACHE_ROOT/$_entry" ] || continue
-    if [ -z "$LATEST" ] || [ "$CACHE_ROOT/$_entry" -nt "$CACHE_ROOT/$LATEST" ]; then
+  while IFS= read -r -d '' _entry_path; do
+    _entry=${_entry_path##*/}
+    if [ -z "$LATEST" ] || [ "$_entry_path" -nt "$CACHE_ROOT/$LATEST" ]; then
       LATEST="$_entry"
     elif [ ! "$CACHE_ROOT/$LATEST" -nt "$CACHE_ROOT/$_entry" ] \
-      && [ ! "$CACHE_ROOT/$_entry" -nt "$CACHE_ROOT/$LATEST" ] \
+      && [ ! "$_entry_path" -nt "$CACHE_ROOT/$LATEST" ] \
       && [[ "$(version_key "$_entry")" > "$(version_key "$LATEST")" ]]; then
       LATEST="$_entry"
     fi
-  done < <(ls -1 "$CACHE_ROOT" 2>/dev/null)
+  done < <(find "$CACHE_ROOT"/* -prune -type d -print0 2>/dev/null)
   if [ -n "$LATEST" ] && is_valid "$CACHE_ROOT/$LATEST/skills/deliver"; then
     printf 'SKILL_DIR=%s\n' "$CACHE_ROOT/$LATEST/skills/deliver"
     exit 0
