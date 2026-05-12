@@ -108,7 +108,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Format and post Claude review
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           CLAUDE_STRUCTURED_OUTPUT: ${{ needs.claude-review.outputs.structured_output }}
         with:
