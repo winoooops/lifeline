@@ -188,7 +188,7 @@ case "$_codex_exec_help" in
 esac
 
 # All validations passed — now safe to allocate the scratch directory.
-SCRATCH=$(mktemp -d -t lifeline-deliver-XXXXXX)
+SCRATCH=$(mktemp -d -t lifeline-deliver-paired-XXXXXX)
 OBJECTIVE_RAW_FILE="$SCRATCH/objective.raw"
 OBJECTIVE_HTML_FILE="$SCRATCH/objective.html"
 printf '%s' "$OBJECTIVE_RAW" > "$OBJECTIVE_RAW_FILE" || { echo "ERROR: failed to write raw objective at $OBJECTIVE_RAW_FILE" >&2; exit 1; }
@@ -603,17 +603,6 @@ else
   GRADER_UNUSABLE_STREAK=$((GRADER_UNUSABLE_STREAK + 1))
   printf '%s\n' "$GRADER_UNUSABLE_STREAK" > "$SCRATCH/grader-unusable-streak" || { echo "ERROR: failed to write grader-unusable-streak at $SCRATCH/grader-unusable-streak" >&2; exit 1; }
   echo "GRADER_UNUSABLE_STREAK=$GRADER_UNUSABLE_STREAK"
-  # Stdout contract: every parsed value goes to stdout (the agent reads
-  # stdout for downstream reasoning). Stderr is for human-only warning
-  # noise. Earlier this echoed VERDICT to stderr, which violated the
-  # contract and forced agents to infer grader-unusable from absence
-  # rather than presence of VERDICT.
-  if [ "${RENDER_FAILED:-0}" -eq 1 ]; then
-    echo "VERDICT=grader_unusable (render_failed; see render-stderr)"
-  else
-    echo "VERDICT=grader_unusable (codex_exit=$CODEX_EXIT, file empty/malformed)"
-  fi
-  echo "VERDICT_SOURCE=$VERDICT_SOURCE"
   # Human-readable warning (mirror of the structured VERDICT line above)
   # to stderr so a tail -f session sees the failure even when the agent
   # is consuming stdout programmatically.
@@ -624,6 +613,18 @@ else
     echo "scratch_dir: $SCRATCH"
     exit 1
   fi
+  # Stdout contract: every parsed value goes to stdout (the agent reads
+  # stdout for downstream reasoning). Stderr is for human-only warning
+  # noise. Earlier this echoed VERDICT to stderr, which violated the
+  # contract and forced agents to infer grader-unusable from absence
+  # rather than presence of VERDICT. Only non-terminal fallback paths
+  # emit grader_unusable; the terminal path above emits hard_error only.
+  if [ "${RENDER_FAILED:-0}" -eq 1 ]; then
+    echo "VERDICT=grader_unusable (render_failed; see render-stderr)"
+  else
+    echo "VERDICT=grader_unusable (codex_exit=$CODEX_EXIT, file empty/malformed)"
+  fi
+  echo "VERDICT_SOURCE=$VERDICT_SOURCE"
   echo "FALLBACK: apply continuation.md audit checklist to your last action this iteration"
   # → apply continuation.md audit checklist to your last action
   # → if audit returns complete, go to Step 3 (record VERDICT_SOURCE=self-audit-fallback)
@@ -707,14 +708,14 @@ note: paired mode degraded to self-audit for the final iteration — re-run when
 
 Then clean up the scratch dir. **Rehydrate `$SCRATCH` first** — this block runs in a fresh Bash tool call so the variable from Step 1 isn't in scope; without the rehydration, `rm -rf ""` is a no-op and the scratch dir leaks on every successful run.
 
-The substring check `*"/lifeline-deliver-"*` converts a misquoted/wrong rehydration into a visible warning instead of a destructive `rm -rf`. mktemp's path uses `$TMPDIR` (which differs by OS — `/tmp/lifeline-deliver-XXXXXX` on Linux, `/var/folders/.../T/lifeline-deliver-XXXXXX` on macOS), so we anchor on the `lifeline-deliver-` prefix segment rather than a fixed `/tmp/` root:
+The substring check `*"/lifeline-deliver-paired-"*` converts a misquoted/wrong rehydration into a visible warning instead of a destructive `rm -rf`. mktemp's path uses `$TMPDIR` (which differs by OS — `/tmp/lifeline-deliver-paired-XXXXXX` on Linux, `/var/folders/.../T/lifeline-deliver-paired-XXXXXX` on macOS), so we anchor on the paired-mode prefix segment rather than a fixed `/tmp/` root:
 
 ```bash
 SCRATCH=<paste the literal scratch path SCRATCH= line from Step 1 stdout>
-if [[ -n "$SCRATCH" && "$SCRATCH" == *"/lifeline-deliver-"* ]]; then
+if [[ -n "$SCRATCH" && "$SCRATCH" == *"/lifeline-deliver-paired-"* ]]; then
   rm -rf "$SCRATCH"
 else
-  echo "WARN: $SCRATCH does not contain '/lifeline-deliver-' — skipping cleanup to avoid destroying the wrong path." >&2
+  echo "WARN: $SCRATCH does not contain '/lifeline-deliver-paired-' — skipping cleanup to avoid destroying the wrong path." >&2
 fi
 ```
 

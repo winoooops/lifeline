@@ -237,6 +237,32 @@ def test_grader_unusable_hard_error_prints_scratch_dir_to_stdout() -> None:
     assert 'echo "scratch_dir: $SCRATCH" >&2' not in hard_error
 
 
+def test_grader_unusable_hard_error_branch_emits_no_fallback_verdict() -> None:
+    text = PAIRED_MODE.read_text()
+    start = text.index('if [ "$GRADER_UNUSABLE_STREAK" -ge 3 ]; then')
+    end = text.index("  # Stdout contract:", start)
+    hard_error_branch = text[start:end]
+    fallback_branch = text[end:text.index('echo "FALLBACK:', end)]
+
+    assert 'echo "VERDICT=hard_error (grader_unusable_streak=$GRADER_UNUSABLE_STREAK)"' in hard_error_branch
+    assert "VERDICT=grader_unusable" not in hard_error_branch
+    assert "VERDICT=grader_unusable" in fallback_branch
+    assert "VERDICT=hard_error" not in fallback_branch
+
+
+def test_paired_cleanup_guard_uses_paired_specific_scratch_prefix() -> None:
+    paired = PAIRED_MODE.read_text()
+    pure = PURE_MODE.read_text()
+
+    assert "mktemp -d -t lifeline-deliver-paired-XXXXXX" in paired
+    assert "mktemp -d -t lifeline-deliver-XXXXXX" not in paired
+    assert '*"/lifeline-deliver-paired-"*' in paired
+    assert '*"/lifeline-deliver-"*' not in paired
+    assert "does not contain '/lifeline-deliver-paired-'" in paired
+    assert "does not contain '/lifeline-deliver-'" not in paired
+    assert "lifeline-deliver-pure-" in pure
+
+
 def test_paired_step_2c_raw_objective_guard_reports_scratch_dir() -> None:
     text = PAIRED_MODE.read_text()
 
