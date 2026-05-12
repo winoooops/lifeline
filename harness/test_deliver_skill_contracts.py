@@ -51,6 +51,10 @@ def test_paired_step_2c_guards_all_rehydrated_paths() -> None:
         in text
     )
     assert (
+        ": \"${OBJECTIVE_RAW_FILE:?OBJECTIVE_RAW_FILE must be rehydrated from Step 1 echo"
+        in text
+    )
+    assert (
         ": \"${GRADER_UNUSABLE_STREAK:?GRADER_UNUSABLE_STREAK must be rehydrated"
         in text
     )
@@ -111,6 +115,7 @@ def test_paired_mode_preflights_required_codex_exec_flags() -> None:
 
 def test_paired_mode_materializes_objective_without_shell_state() -> None:
     text = PAIRED_MODE.read_text()
+    step_2c = text[text.index("### 2c. Run the codex grader"): text.index("### 2d. Increment")]
 
     assert "single-quoted literal" in text
     assert "escape every literal single quote" in text
@@ -120,6 +125,8 @@ def test_paired_mode_materializes_objective_without_shell_state() -> None:
     assert 'printf \'%s\' "$OBJECTIVE_RAW" > "$OBJECTIVE_RAW_FILE" ||' in text
     assert "ERROR: failed to write raw objective" in text
     assert "ERROR: failed to write objective HTML" in text
+    assert "OBJECTIVE_RAW_FILE=<paste the literal OBJECTIVE_RAW_FILE value from Step 1>" in step_2c
+    assert 'OBJECTIVE_RAW_FILE="$SCRATCH/objective.raw"' not in step_2c
     assert 'GRADER_TEMPLATE="$GRADER_TEMPLATE" RENDER_DIR="$RENDER_DIR" OBJECTIVE_RAW_FILE="$OBJECTIVE_RAW_FILE"' in text
     assert "'{{ objective }}':       safe(objective_raw_file)" in text
     assert "every grader prompt reads the code-generated `OBJECTIVE_RAW_FILE`" in text
@@ -165,6 +172,18 @@ def test_budget_limit_instructions_list_actual_placeholders() -> None:
         assert "`{{ iter_used }}`" in text
         assert "`{{ iter_budget }}`" in text
         assert "substitute the same placeholders as 2a" not in text
+
+
+def test_budget_limit_render_calls_pass_iter_remaining() -> None:
+    for path in (PURE_MODE, PAIRED_MODE):
+        text = path.read_text()
+        start = text.index("### Budget-limited path")
+        end = text.index("Read the rendered file path printed after `BUDGET_LIMIT_RENDERED=`")
+        budget_block = text[start:end]
+
+        assert '--iter-used "$ITER"' in budget_block
+        assert '--iter-budget "$CAP"' in budget_block
+        assert '--iter-remaining "$((CAP - ITER))" || exit 1' in budget_block
 
 
 def test_pure_mode_preflights_continuation_template() -> None:

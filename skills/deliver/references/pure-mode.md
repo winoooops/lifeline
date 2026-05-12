@@ -249,7 +249,7 @@ evidence_checked:
 
 ### Budget-limited path
 
-When `ITER == CAP` without a complete verdict, render `$SKILL_DIR/references/budget_limit.md` through the same code path and use the rendered file for one wrap-up turn. The renderer supplies `{{ objective }}` from `OBJECTIVE_HTML_FILE`, `{{ iter_used }}` from `ITER`, and `{{ iter_budget }}` from `CAP`:
+When `ITER == CAP` without a complete verdict, render `$SKILL_DIR/references/budget_limit.md` through the same code path and use the rendered file for one wrap-up turn. The renderer supplies `{{ objective }}` from `OBJECTIVE_HTML_FILE`, `{{ iter_used }}` from `ITER`, `{{ iter_budget }}` from `CAP`, and `{{ iter_remaining }}` from `$((CAP - ITER))`:
 
 ```bash
 ITER=<paste the literal ITER value from the final Step 2d echo; it must equal CAP>
@@ -271,7 +271,8 @@ BUDGET_LIMIT_RENDERED="$SCRATCH/budget-limit.rendered"
   "$OBJECTIVE_HTML_FILE" \
   "$BUDGET_LIMIT_RENDERED" \
   --iter-used "$ITER" \
-  --iter-budget "$CAP" || exit 1
+  --iter-budget "$CAP" \
+  --iter-remaining "$((CAP - ITER))" || exit 1
 echo "BUDGET_LIMIT_RENDERED=$BUDGET_LIMIT_RENDERED"
 ```
 

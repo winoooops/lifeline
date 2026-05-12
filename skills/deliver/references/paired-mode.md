@@ -260,7 +260,7 @@ Optionally maintain a mental list of files you touched this iteration — it get
 
 ### 2c. Run the codex grader
 
-Build the grader prompt and invoke `codex exec`. **Rehydrate `ITER` as a shell variable** at the top of the block — the same `VAR=<paste literal value>` pattern used for `SCRATCH`/`SKILL_DIR`/`SCHEMA_PATH`/`GRADER_TEMPLATE`/`GRADER_UNUSABLE_STREAK`. The current ITER value comes from Step 1's `echo "ITER=$ITER"` (for the first iteration) or from the previous iteration's Step 2d post-increment echo. The grader-unusable streak starts from Step 1's `GRADER_UNUSABLE_STREAK_INIT=0` only on iteration 0; after any Step 2c run, use the latest `GRADER_UNUSABLE_STREAK=...` emitted by Step 2c and do not reuse the init value. Do NOT inline-substitute `$ITER` throughout the block — that breaks the `${ITER:?}` guard (it would become `${1:?}` etc., where `$N` is the empty positional parameter). Set ITER once at the top; let bash do the variable expansion below.
+Build the grader prompt and invoke `codex exec`. **Rehydrate `ITER` as a shell variable** at the top of the block — the same `VAR=<paste literal value>` pattern used for `SCRATCH`/`SKILL_DIR`/`SCHEMA_PATH`/`GRADER_TEMPLATE`/`OBJECTIVE_RAW_FILE`/`GRADER_UNUSABLE_STREAK`. The current ITER value comes from Step 1's `echo "ITER=$ITER"` (for the first iteration) or from the previous iteration's Step 2d post-increment echo. The grader-unusable streak starts from Step 1's `GRADER_UNUSABLE_STREAK_INIT=0` only on iteration 0; after any Step 2c run, use the latest `GRADER_UNUSABLE_STREAK=...` emitted by Step 2c and do not reuse the init value. Do NOT inline-substitute `$ITER` throughout the block — that breaks the `${ITER:?}` guard (it would become `${1:?}` etc., where `$N` is the empty positional parameter). Set ITER once at the top; let bash do the variable expansion below.
 
 The `${ITER:?}` guard exits with an error if rehydration was missed, converting silent per-iteration path collisions (`grader-.json`, `render-input-/` overwriting on every iteration) into a loud startup failure. The `${SCRATCH:?}` guard does the same for the scratch root before any per-iteration artifact paths are built.
 
@@ -278,6 +278,7 @@ SCRATCH=<paste the literal SCRATCH value from Step 1>
 SKILL_DIR=<paste the literal SKILL_DIR value from Step 1>
 SCHEMA_PATH=<paste the literal SCHEMA_PATH value from Step 1>
 GRADER_TEMPLATE=<paste the literal GRADER_TEMPLATE value from Step 1>
+OBJECTIVE_RAW_FILE=<paste the literal OBJECTIVE_RAW_FILE value from Step 1>
 # Iteration 0 only: paste GRADER_UNUSABLE_STREAK_INIT from Step 1.
 # Later iterations: paste the latest GRADER_UNUSABLE_STREAK emitted by
 # Step 2c; do NOT reuse GRADER_UNUSABLE_STREAK_INIT.
@@ -287,6 +288,7 @@ GRADER_UNUSABLE_STREAK=<paste the current grader-unusable streak, e.g. 0 or 2>
 : "${SKILL_DIR:?SKILL_DIR must be rehydrated from Step 1 echo; see Step 2c preamble}"
 : "${SCHEMA_PATH:?SCHEMA_PATH must be rehydrated from Step 1 echo; see Step 2c preamble}"
 : "${GRADER_TEMPLATE:?GRADER_TEMPLATE must be rehydrated from Step 1 echo; see Step 2c preamble}"
+: "${OBJECTIVE_RAW_FILE:?OBJECTIVE_RAW_FILE must be rehydrated from Step 1 echo; see Step 2c preamble}"
 : "${GRADER_UNUSABLE_STREAK:?GRADER_UNUSABLE_STREAK must be rehydrated from GRADER_UNUSABLE_STREAK_INIT or the previous Step 2c echo; see Step 2c preamble}"
 
 EXPECTED_GRADER_UNUSABLE_STREAK=$(cat "$SCRATCH/grader-unusable-streak" 2>/dev/null || true)
@@ -414,7 +416,6 @@ FILES_TOUCHED="$_validated_files_touched"
 # ENV would fail python3's exec() before any rendering happened. The
 # stdin path below for codex exec is the same fix applied at the
 # next layer.
-OBJECTIVE_RAW_FILE="$SCRATCH/objective.raw"
 if [ ! -f "$OBJECTIVE_RAW_FILE" ]; then
   echo "ERROR: raw objective file not found at $OBJECTIVE_RAW_FILE. Rerun paired mode Step 1." >&2
   echo "scratch_dir: $SCRATCH" >&2
@@ -721,7 +722,7 @@ fi
 
 ### Budget-limited path
 
-When `ITER == CAP` without a complete verdict, render `$SKILL_DIR/references/budget_limit.md` through the same code path and use the rendered file for one wrap-up turn. The renderer supplies `{{ objective }}` from `OBJECTIVE_HTML_FILE`, `{{ iter_used }}` from `ITER`, and `{{ iter_budget }}` from `CAP`:
+When `ITER == CAP` without a complete verdict, render `$SKILL_DIR/references/budget_limit.md` through the same code path and use the rendered file for one wrap-up turn. The renderer supplies `{{ objective }}` from `OBJECTIVE_HTML_FILE`, `{{ iter_used }}` from `ITER`, `{{ iter_budget }}` from `CAP`, and `{{ iter_remaining }}` from `$((CAP - ITER))`:
 
 ```bash
 ITER=<paste the literal ITER value from the final Step 2d echo; it must equal CAP>
@@ -743,7 +744,8 @@ BUDGET_LIMIT_RENDERED="$SCRATCH/budget-limit.rendered"
   "$OBJECTIVE_HTML_FILE" \
   "$BUDGET_LIMIT_RENDERED" \
   --iter-used "$ITER" \
-  --iter-budget "$CAP" || exit 1
+  --iter-budget "$CAP" \
+  --iter-remaining "$((CAP - ITER))" || exit 1
 echo "BUDGET_LIMIT_RENDERED=$BUDGET_LIMIT_RENDERED"
 ```
 
