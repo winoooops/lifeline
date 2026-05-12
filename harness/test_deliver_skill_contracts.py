@@ -22,7 +22,8 @@ APACHE_LICENSE = REPO_ROOT / "LICENSE-apache-2.0"
 def test_explicit_paired_cap_has_a_maximum_bound() -> None:
     text = SKILL.read_text()
 
-    assert "When ≤ 0: error with `iteration cap must be a positive integer`" in text
+    assert "When < 0: error with `iteration cap must not be negative`" in text
+    assert "When = 0: error with `iteration cap must be a positive integer`" in text
     assert "When > 50: error with `iteration cap must be <= 50`" in text
     assert "When 1..50: `CAP = int(second token)`" in text
 
@@ -526,7 +527,7 @@ def test_render_template_script_rejects_non_numeric_counters(tmp_path: Path) -> 
     assert "--iter-used must be a non-negative integer" in proc.stderr
 
 
-def test_render_template_script_warns_when_remaining_placeholder_unfilled(
+def test_render_template_script_errors_when_remaining_placeholder_unfilled(
     tmp_path: Path,
 ) -> None:
     template = tmp_path / "template.md"
@@ -551,9 +552,9 @@ def test_render_template_script_warns_when_remaining_placeholder_unfilled(
         timeout=10,
     )
 
-    assert proc.returncode == 0
-    assert "WARN: template uses {{ iter_remaining }}" in proc.stderr
-    assert "remaining=\n" == output.read_text()
+    assert proc.returncode == 2
+    assert "ERROR: template uses {{ iter_remaining }}" in proc.stderr
+    assert not output.exists()
 
 
 def test_render_template_script_rejects_empty_remaining_argument(

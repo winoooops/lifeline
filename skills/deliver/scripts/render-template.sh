@@ -66,7 +66,8 @@ if [ "$ITER_REMAINING_SEEN" -eq 1 ]; then
   esac
 fi
 if [ "$ITER_REMAINING_SEEN" -eq 0 ] && grep -qF '{{ iter_remaining }}' "$TEMPLATE"; then
-  echo "WARN: template uses {{ iter_remaining }} but --iter-remaining was not provided" >&2
+  echo "ERROR: template uses {{ iter_remaining }} but --iter-remaining was not provided" >&2
+  exit 2
 fi
 
 mkdir -p "$(dirname "$OUTPUT")"
