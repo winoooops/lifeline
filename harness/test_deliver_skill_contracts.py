@@ -12,7 +12,6 @@ SKILL = REPO_ROOT / "skills/deliver/SKILL.md"
 PURE_MODE = REPO_ROOT / "skills/deliver/references/pure-mode.md"
 PAIRED_MODE = REPO_ROOT / "skills/deliver/references/paired-mode.md"
 DELIVER_GUARDS_WORKFLOW = REPO_ROOT / ".github/workflows/deliver-guards.yml"
-CLAUDE_REVIEW_WORKFLOW = REPO_ROOT / ".github/workflows/claude-review.yml"
 DEPENDABOT = REPO_ROOT / ".github/dependabot.yml"
 RESOLVER_SCRIPT = REPO_ROOT / "skills/deliver/scripts/resolve-skill-dir.sh"
 RENDER_TEMPLATE = REPO_ROOT / "skills/deliver/scripts/render-template.sh"
@@ -378,15 +377,6 @@ def test_github_actions_are_sha_pinned_and_dependabot_tracks_updates() -> None:
     dependabot = DEPENDABOT.read_text()
     assert 'package-ecosystem: "github-actions"' in dependabot
     assert 'directory: "/"' in dependabot
-
-
-def test_claude_review_workflow_handles_large_structured_output() -> None:
-    text = CLAUDE_REVIEW_WORKFLOW.read_text()
-
-    assert "actions/checkout@v5" in text
-    assert "anthropics/claude-code-action@v1" in text
-    assert "actions/github-script@v7" in text
-    assert 'CLAUDE_CODE_MAX_OUTPUT_TOKENS: "64000"' in text
 
 
 def test_resolver_mirrors_have_explicit_boundary_sentinels() -> None:

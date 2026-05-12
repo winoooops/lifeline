@@ -51,10 +51,6 @@ jobs:
       - name: Run Claude review
         id: claude
         uses: anthropics/claude-code-action@v1
-        env:
-          # Keep large structured reviews from failing before the formatter can
-          # post the findings. The action default is 32000 output tokens.
-          CLAUDE_CODE_MAX_OUTPUT_TOKENS: "64000"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
