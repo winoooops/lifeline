@@ -150,6 +150,54 @@ def test_deliver_resolver_mirrors_pick_newest_cache_directory_and_ignore_files(
 
 
 @pytest.mark.parametrize("name, resolver", RESOLVERS.items())
+def test_deliver_resolver_mirrors_skip_invalid_newest_cache_directory(
+    tmp_path: Path,
+    name: str,
+    resolver: tuple[str, Path],
+) -> None:
+    """A partial newest cache install must not block an older valid install."""
+    env = _base_env(tmp_path)
+    cache_root = Path(env["HOME"]) / ".claude/plugins/cache/lifeline/lifeline"
+    valid_skill = _make_deliver_skill(cache_root / "0.0.1/skills/deliver")
+    invalid_dir = cache_root / "0.0.2"
+    (invalid_dir / "skills/deliver").mkdir(parents=True)
+
+    os.utime(cache_root / "0.0.1", (1000, 1000))
+    os.utime(invalid_dir, (2000, 2000))
+
+    proc = _run_resolver(*resolver, env=env)
+
+    assert proc.returncode == 0, (
+        f"{name} failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
+    assert _resolved_skill_dir(proc) == str(valid_skill)
+    assert "WARN: skipping cache entry missing sentinel" in proc.stderr
+
+
+@pytest.mark.parametrize("name, resolver", RESOLVERS.items())
+def test_deliver_resolver_mirrors_warn_on_invalid_env_override_then_use_cache(
+    tmp_path: Path,
+    name: str,
+    resolver: tuple[str, Path],
+) -> None:
+    """An invalid LIFELINE_SKILL_DIR should be visible and fall back."""
+    env = _base_env(tmp_path)
+    invalid_override = tmp_path / "invalid-deliver"
+    invalid_override.mkdir()
+    env["LIFELINE_SKILL_DIR"] = str(invalid_override)
+    cache_root = Path(env["HOME"]) / ".claude/plugins/cache/lifeline/lifeline"
+    valid_skill = _make_deliver_skill(cache_root / "0.0.1/skills/deliver")
+
+    proc = _run_resolver(*resolver, env=env)
+
+    assert proc.returncode == 0, (
+        f"{name} failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    )
+    assert _resolved_skill_dir(proc) == str(valid_skill)
+    assert "WARN: LIFELINE_SKILL_DIR set but sentinel missing" in proc.stderr
+
+
+@pytest.mark.parametrize("name, resolver", RESOLVERS.items())
 def test_deliver_resolver_mirrors_break_equal_mtime_ties_by_name(
     tmp_path: Path,
     name: str,

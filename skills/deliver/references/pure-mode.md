@@ -58,9 +58,15 @@ version_key() {
 # real deliver skill dir?" check across the codebase. Pure mode doesn't
 # use the schema itself, but a single sentinel everywhere means
 # LIFELINE_SKILL_DIR has the same accept/reject semantics in both modes.
-if [ -n "${LIFELINE_SKILL_DIR:-}" ] && [ -f "$LIFELINE_SKILL_DIR/schemas/grader-output.json" ]; then
-  SKILL_DIR="$LIFELINE_SKILL_DIR"
-else
+if [ -n "${LIFELINE_SKILL_DIR:-}" ]; then
+  if [ -f "$LIFELINE_SKILL_DIR/schemas/grader-output.json" ]; then
+    SKILL_DIR="$LIFELINE_SKILL_DIR"
+  else
+    echo "WARN: LIFELINE_SKILL_DIR set but sentinel missing at $LIFELINE_SKILL_DIR/schemas/grader-output.json; falling back to plugin cache" >&2
+  fi
+fi
+
+if [ -z "$SKILL_DIR" ]; then
   _cache="$HOME/.claude/plugins/cache/lifeline/lifeline"
   if [ -d "$_cache" ]; then
     # Newest-installed wins by mtime, with a zero-padded version-key
@@ -71,6 +77,10 @@ else
     _latest=""
     while IFS= read -r -d '' _entry_path; do
       _e=${_entry_path##*/}
+      if [ ! -f "$_entry_path/skills/deliver/schemas/grader-output.json" ]; then
+        echo "WARN: skipping cache entry missing sentinel: $_entry_path/skills/deliver/schemas/grader-output.json" >&2
+        continue
+      fi
       if [ -z "$_latest" ] || [ "$_entry_path" -nt "$_cache/$_latest" ]; then
         _latest="$_e"
       elif [ ! "$_cache/$_latest" -nt "$_cache/$_e" ] \
@@ -79,7 +89,7 @@ else
         _latest="$_e"
       fi
     done < <(find "$_cache" -maxdepth 1 -mindepth 1 -type d -print0 2>/dev/null)
-    if [ -n "$_latest" ] && [ -f "$_cache/$_latest/skills/deliver/schemas/grader-output.json" ]; then
+    if [ -n "$_latest" ]; then
       SKILL_DIR="$_cache/$_latest/skills/deliver"
     fi
   fi

@@ -66,9 +66,13 @@ version_key() {
 }
 
 # 1. Env override.
-if [ -n "${LIFELINE_SKILL_DIR:-}" ] && is_valid "$LIFELINE_SKILL_DIR"; then
-  printf 'SKILL_DIR=%s\n' "$LIFELINE_SKILL_DIR"
-  exit 0
+if [ -n "${LIFELINE_SKILL_DIR:-}" ]; then
+  if is_valid "$LIFELINE_SKILL_DIR"; then
+    printf 'SKILL_DIR=%s\n' "$LIFELINE_SKILL_DIR"
+    exit 0
+  else
+    echo "WARN: LIFELINE_SKILL_DIR set but sentinel missing at $LIFELINE_SKILL_DIR/schemas/grader-output.json; falling back to plugin cache" >&2
+  fi
 fi
 
 # 2. Plugin cache (newest-installed wins).
@@ -82,6 +86,10 @@ if [ -d "$CACHE_ROOT" ]; then
   LATEST=""
   while IFS= read -r -d '' _entry_path; do
     _entry=${_entry_path##*/}
+    if ! is_valid "$_entry_path/skills/deliver"; then
+      echo "WARN: skipping cache entry missing sentinel: $_entry_path/skills/deliver/schemas/grader-output.json" >&2
+      continue
+    fi
     if [ -z "$LATEST" ] || [ "$_entry_path" -nt "$CACHE_ROOT/$LATEST" ]; then
       LATEST="$_entry"
     elif [ ! "$CACHE_ROOT/$LATEST" -nt "$CACHE_ROOT/$_entry" ] \
@@ -90,14 +98,14 @@ if [ -d "$CACHE_ROOT" ]; then
       LATEST="$_entry"
     fi
   done < <(find "$CACHE_ROOT" -maxdepth 1 -mindepth 1 -type d -print0 2>/dev/null)
-  if [ -n "$LATEST" ] && is_valid "$CACHE_ROOT/$LATEST/skills/deliver"; then
+  if [ -n "$LATEST" ]; then
     printf 'SKILL_DIR=%s\n' "$CACHE_ROOT/$LATEST/skills/deliver"
     exit 0
   fi
 fi
 
 echo "ERROR: could not resolve lifeline skills/deliver directory." >&2
-echo "  Tried: \$LIFELINE_SKILL_DIR, $CACHE_ROOT/<latest>/skills/deliver" >&2
+echo "  Tried: \$LIFELINE_SKILL_DIR, $CACHE_ROOT/${LATEST:-<none found>}/skills/deliver" >&2
 echo "  Required sentinel: schemas/grader-output.json (plus references/*.md templates for runtime)." >&2
 echo "  Set LIFELINE_SKILL_DIR or install the plugin via /plugin install lifeline." >&2
 exit 1

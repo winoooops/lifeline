@@ -60,6 +60,9 @@ esac
 case "$ITER_REMAINING" in
   *[!0-9]*) echo "ERROR: --iter-remaining must be a non-negative integer" >&2; exit 2 ;;
 esac
+if [ -z "$ITER_REMAINING" ] && grep -qF '{{ iter_remaining }}' "$TEMPLATE"; then
+  echo "WARN: template uses {{ iter_remaining }} but --iter-remaining was not provided" >&2
+fi
 
 mkdir -p "$(dirname "$OUTPUT")"
 

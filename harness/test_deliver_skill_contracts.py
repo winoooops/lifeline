@@ -462,6 +462,36 @@ def test_render_template_script_rejects_non_numeric_counters(tmp_path: Path) -> 
     assert "--iter-used must be a non-negative integer" in proc.stderr
 
 
+def test_render_template_script_warns_when_remaining_placeholder_unfilled(
+    tmp_path: Path,
+) -> None:
+    template = tmp_path / "template.md"
+    objective_html = tmp_path / "objective.html"
+    output = tmp_path / "rendered.md"
+    template.write_text("remaining={{ iter_remaining }}\n")
+    objective_html.write_text("objective\n")
+
+    proc = subprocess.run(
+        [
+            str(RENDER_TEMPLATE),
+            str(template),
+            str(objective_html),
+            str(output),
+            "--iter-used",
+            "2",
+            "--iter-budget",
+            "5",
+        ],
+        text=True,
+        capture_output=True,
+        timeout=10,
+    )
+
+    assert proc.returncode == 0
+    assert "WARN: template uses {{ iter_remaining }}" in proc.stderr
+    assert "remaining=\n" == output.read_text()
+
+
 def test_paired_incomplete_grader_verdict_requires_missing_requirements() -> None:
     paired = PAIRED_MODE.read_text()
     prompt = (REPO_ROOT / "skills/deliver/references/grader-prompt.md").read_text()
