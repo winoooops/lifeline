@@ -118,6 +118,8 @@ def test_paired_mode_materializes_objective_without_shell_state() -> None:
     assert text.count("OBJECTIVE_RAW='__OBJECTIVE_SINGLE_QUOTED_PLACEHOLDER__'") == 1
     assert 'OBJECTIVE_RAW_FILE="$SCRATCH/objective.raw"' in text
     assert 'printf \'%s\' "$OBJECTIVE_RAW" > "$OBJECTIVE_RAW_FILE" ||' in text
+    assert "ERROR: failed to write raw objective" in text
+    assert "ERROR: failed to write objective HTML" in text
     assert 'GRADER_TEMPLATE="$GRADER_TEMPLATE" RENDER_DIR="$RENDER_DIR" OBJECTIVE_RAW_FILE="$OBJECTIVE_RAW_FILE"' in text
     assert "'{{ objective }}':       safe(objective_raw_file)" in text
     assert "every grader prompt reads the code-generated `OBJECTIVE_RAW_FILE`" in text
@@ -413,11 +415,11 @@ def test_render_template_script_inserts_objective_last(tmp_path: Path) -> None:
             str(objective_html),
             str(output),
             "--iter-used",
-            "2&",
+            "2",
             "--iter-budget",
-            "5&",
+            "5",
             "--iter-remaining",
-            "3&",
+            "3",
         ],
         text=True,
         capture_output=True,
@@ -430,7 +432,34 @@ def test_render_template_script_inserts_objective_last(tmp_path: Path) -> None:
         "literal {{ iter_used }} and {{ objective }} &lt;/untrusted_objective&gt;"
         in rendered
     )
-    assert "used=2& budget=5& remaining=3&" in rendered
+    assert "used=2 budget=5 remaining=3" in rendered
+
+
+def test_render_template_script_rejects_non_numeric_counters(tmp_path: Path) -> None:
+    template = tmp_path / "template.md"
+    objective_html = tmp_path / "objective.html"
+    output = tmp_path / "rendered.md"
+    template.write_text("used={{ iter_used }} budget={{ iter_budget }}\n")
+    objective_html.write_text("objective\n")
+
+    proc = subprocess.run(
+        [
+            str(RENDER_TEMPLATE),
+            str(template),
+            str(objective_html),
+            str(output),
+            "--iter-used",
+            "{{ iter_budget }}",
+            "--iter-budget",
+            "5",
+        ],
+        text=True,
+        capture_output=True,
+        timeout=10,
+    )
+
+    assert proc.returncode == 2
+    assert "--iter-used must be a non-negative integer" in proc.stderr
 
 
 def test_paired_incomplete_grader_verdict_requires_missing_requirements() -> None:

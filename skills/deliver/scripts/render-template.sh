@@ -51,6 +51,15 @@ done
 [ -f "$OBJECTIVE_HTML_FILE" ] || { echo "ERROR: objective HTML file not found at $OBJECTIVE_HTML_FILE" >&2; exit 1; }
 : "${ITER_USED:?--iter-used is required}"
 : "${ITER_BUDGET:?--iter-budget is required}"
+case "$ITER_USED" in
+  *[!0-9]*) echo "ERROR: --iter-used must be a non-negative integer" >&2; exit 2 ;;
+esac
+case "$ITER_BUDGET" in
+  *[!0-9]*) echo "ERROR: --iter-budget must be a non-negative integer" >&2; exit 2 ;;
+esac
+case "$ITER_REMAINING" in
+  *[!0-9]*) echo "ERROR: --iter-remaining must be a non-negative integer" >&2; exit 2 ;;
+esac
 
 mkdir -p "$(dirname "$OUTPUT")"
 
