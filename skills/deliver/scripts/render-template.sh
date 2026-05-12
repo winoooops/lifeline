@@ -51,8 +51,8 @@ done
 
 [ -f "$TEMPLATE" ] || { echo "ERROR: template not found at $TEMPLATE" >&2; exit 1; }
 [ -f "$OBJECTIVE_HTML_FILE" ] || { echo "ERROR: objective HTML file not found at $OBJECTIVE_HTML_FILE" >&2; exit 1; }
-: "${ITER_USED:?--iter-used is required}"
-: "${ITER_BUDGET:?--iter-budget is required}"
+[ -n "$ITER_USED" ] || { echo "ERROR: --iter-used is required" >&2; exit 2; }
+[ -n "$ITER_BUDGET" ] || { echo "ERROR: --iter-budget is required" >&2; exit 2; }
 case "$ITER_USED" in
   *[!0-9]*) echo "ERROR: --iter-used must be a non-negative integer" >&2; exit 2 ;;
 esac

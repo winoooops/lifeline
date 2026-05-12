@@ -309,6 +309,18 @@ def test_paired_step_2c_raw_objective_guard_reports_scratch_dir() -> None:
     assert 'echo "scratch_dir: $SCRATCH" >&2' in text
 
 
+def test_paired_stale_streak_errors_report_scratch_dir_to_stdout() -> None:
+    text = PAIRED_MODE.read_text()
+    start = text.index('EXPECTED_GRADER_UNUSABLE_STREAK=$(cat "$SCRATCH/grader-unusable-streak"')
+    end = text.index("# Tracked-file diff.")
+    block = text[start:end]
+
+    assert ': "${EXPECTED_GRADER_UNUSABLE_STREAK:?' not in block
+    assert "missing scratch-backed grader unusable streak" in block
+    assert "stale GRADER_UNUSABLE_STREAK rehydration" in block
+    assert block.count('echo "scratch_dir: $SCRATCH"') == 2
+
+
 def test_grader_unusable_streak_writes_fail_loudly() -> None:
     text = PAIRED_MODE.read_text()
 
@@ -525,6 +537,53 @@ def test_render_template_script_rejects_non_numeric_counters(tmp_path: Path) -> 
 
     assert proc.returncode == 2
     assert "--iter-used must be a non-negative integer" in proc.stderr
+
+
+def test_render_template_script_rejects_missing_required_counters(
+    tmp_path: Path,
+) -> None:
+    template = tmp_path / "template.md"
+    objective_html = tmp_path / "objective.html"
+    output = tmp_path / "rendered.md"
+    template.write_text("used={{ iter_used }} budget={{ iter_budget }}\n")
+    objective_html.write_text("objective\n")
+
+    missing_used = subprocess.run(
+        [
+            str(RENDER_TEMPLATE),
+            str(template),
+            str(objective_html),
+            str(output),
+            "--iter-budget",
+            "5",
+            "--iter-remaining",
+            "0",
+        ],
+        text=True,
+        capture_output=True,
+        timeout=10,
+    )
+
+    missing_budget = subprocess.run(
+        [
+            str(RENDER_TEMPLATE),
+            str(template),
+            str(objective_html),
+            str(output),
+            "--iter-used",
+            "2",
+            "--iter-remaining",
+            "0",
+        ],
+        text=True,
+        capture_output=True,
+        timeout=10,
+    )
+
+    assert missing_used.returncode == 2
+    assert "--iter-used is required" in missing_used.stderr
+    assert missing_budget.returncode == 2
+    assert "--iter-budget is required" in missing_budget.stderr
 
 
 def test_render_template_script_errors_when_remaining_placeholder_unfilled(

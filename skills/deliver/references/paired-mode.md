@@ -302,9 +302,14 @@ GRADER_UNUSABLE_STREAK=<paste the current grader-unusable streak, e.g. 0 or 2>
 : "${GRADER_UNUSABLE_STREAK:?GRADER_UNUSABLE_STREAK must be rehydrated from GRADER_UNUSABLE_STREAK_INIT or the previous Step 2c echo; see Step 2c preamble}"
 
 EXPECTED_GRADER_UNUSABLE_STREAK=$(cat "$SCRATCH/grader-unusable-streak" 2>/dev/null || true)
-: "${EXPECTED_GRADER_UNUSABLE_STREAK:?missing scratch-backed grader unusable streak; rerun Step 1}"
+if [ -z "$EXPECTED_GRADER_UNUSABLE_STREAK" ]; then
+  echo "ERROR: missing scratch-backed grader unusable streak; rerun Step 1" >&2
+  echo "scratch_dir: $SCRATCH"
+  exit 1
+fi
 if [ "$GRADER_UNUSABLE_STREAK" != "$EXPECTED_GRADER_UNUSABLE_STREAK" ]; then
   echo "ERROR: stale GRADER_UNUSABLE_STREAK rehydration: pasted $GRADER_UNUSABLE_STREAK but scratch records $EXPECTED_GRADER_UNUSABLE_STREAK. Use the latest Step 2c echo, not GRADER_UNUSABLE_STREAK_INIT." >&2
+  echo "scratch_dir: $SCRATCH"
   exit 1
 fi
 
